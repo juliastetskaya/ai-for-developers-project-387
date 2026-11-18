@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/juliastetskaya/ai-for-developers-project-387/compare/v1.3.0...v1.3.1) (2026-11-18)
+
+
+### Bug Fixes
+
+* **ci:** ignore bot commands and document the opencode agent ([a3d5a9a](https://github.com/juliastetskaya/ai-for-developers-project-387/commit/a3d5a9aebcf085fa0633cecc2b57bcf0c71519bb))
+
 ## [1.3.0](https://github.com/juliastetskaya/ai-for-developers-project-387/compare/v1.2.0...v1.3.0) (2026-11-18)
 
 
