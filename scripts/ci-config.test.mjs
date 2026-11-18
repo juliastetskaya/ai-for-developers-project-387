@@ -111,6 +111,45 @@ test('lint and typecheck gates also cover the golden path and repo scripts', () 
   assert.match(scripts['typecheck:e2e'] ?? '', /tsconfig\.e2e\.json/);
 });
 
+test('the comment-driven opencode workflow is pinned, time-limited and serialized per task', () => {
+  const workflow = read('.github/workflows/opencode.yml');
+
+  const uses = workflow.split('\n').filter((line) => /^\s*uses:/.test(line));
+  assert.ok(uses.length >= 2, 'opencode.yml must check out the repo and run the action');
+  for (const line of uses) {
+    assert.match(
+      line,
+      /@[0-9a-f]{40}\s+#\s*v?\d+\.\d+\.\d+/,
+      `every action must be pinned to a full commit SHA with its release in a comment: ${line.trim()}`,
+    );
+  }
+
+  assert.match(workflow, /^\s+timeout-minutes:\s*\d+$/m);
+  assert.match(
+    workflow,
+    /^\s+model:\s*[a-z]+\/[a-z0-9.-]+$/m,
+    'the model must be a provider/model pair',
+  );
+  assert.match(workflow, /^\s+variant:\s*(low|high|max)$/m, 'the run pins a model variant');
+  assert.match(
+    workflow,
+    /group: opencode-\$\{\{\s*github\.event\.issue\.number\s*\|\|\s*github\.event\.pull_request\.number\s*\}\}/,
+    'runs on one task must share a concurrency group',
+  );
+  assert.match(workflow, /cancel-in-progress:\s*false/);
+  assert.match(workflow, /permissions:\n\s+contents: read\n\s+id-token: write/);
+  assert.doesNotMatch(
+    workflow,
+    /(contents|pull-requests|issues):\s*write/,
+    'write permissions must come from the OpenCode App token, not the workflow',
+  );
+  assert.match(
+    workflow,
+    /contains\(fromJSON\('\["OWNER","MEMBER","COLLABORATOR"\]'\), github\.event\.comment\.author_association\)/,
+    'a public repo must not let strangers spend the API key',
+  );
+});
+
 test('release-please prefers a PAT and falls back to GITHUB_TOKEN', () => {
   const workflow = read('.github/workflows/release-please.yml');
 

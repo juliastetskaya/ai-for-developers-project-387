@@ -48,6 +48,51 @@ workflow step fails with it. A green job therefore means every gate passed.
 The workflow runs with `permissions: contents: read`, has no `secrets.*` references,
 and is safe for pull requests from forks.
 
+## Comment-driven agent (`opencode.yml`)
+
+`.github/workflows/opencode.yml` runs OpenCode inside Actions: a comment that contains
+`/oc` or `/opencode` — in an issue, in a pull request thread, or on a specific diff line —
+starts a run that answers in the same thread and, when asked, pushes a branch or opens a
+pull request. It is not part of the PR gate; a run only ever starts from a comment.
+
+- **Who can trigger it:** `issue_comment` and `pull_request_review_comment` (`created`)
+  only, and only with `author_association` `OWNER`, `MEMBER` or `COLLABORATOR`. The
+  repository is public and every run spends credits on the API key.
+- **Permissions:** `contents: read` + `id-token: write`. Write access to comments and
+  branches comes from the OpenCode GitHub App installation token exchanged over OIDC, so
+  the workflow's own `GITHUB_TOKEN` stays read-only.
+- **One run per task:** `concurrency.group` is the issue/PR number and
+  `cancel-in-progress: false`, so a second comment on the same task queues behind the
+  running one instead of overlapping it or killing a run mid-push.
+- **Limits:** `timeout-minutes: 15`; `fetch-depth: 1`; `persist-credentials: false`.
+- **Model:** `opencode/deepseek-v4.1-flash` (provider `opencode`, OpenCode Console) with
+  `variant: low` for reasoning effort — a comment run stays fast and cheap. The model also
+  accepts `high` and `max`; switch to `opencode/deepseek-v4-pro` if a task needs it.
+- **Pinning:** `actions/checkout` and `anomalyco/opencode/github` are pinned to full commit
+  SHAs with the release tag in a trailing comment, and `VERSION` pins the CLI binary the
+  action downloads to that same release. Update all three together.
+
+Prerequisites — one-time, done by the repository owner:
+
+1. Install the GitHub App on the repository: <https://github.com/apps/opencode-agent> →
+   *Install* → select this repository. Without the installation the OIDC token exchange
+   fails and the run stops right after checkout.
+2. The `OPENCODE_API_KEY` Actions secret must exist (*Settings → Secrets and variables →
+   Actions*). It is already stored in this repository; the value never goes into a commit,
+   a workflow file or a comment.
+
+Check both without revealing the value:
+
+```bash
+gh api repos/{owner}/{repo}/actions/secrets/OPENCODE_API_KEY --jq '.name'
+```
+
+The secret check prints only the name. For the App, open
+`https://github.com/juliastetskaya/ai-for-developers-project-387/settings/installations`
+(Settings → GitHub Apps) and look for `OpenCode Agent`; the App listings API
+(`GET /repos/{owner}/{repo}/installation`) only answers to an App JWT, so a missing
+installation shows up as a run that stops at the token-exchange step.
+
 ## Run the gates locally
 
 ```bash
