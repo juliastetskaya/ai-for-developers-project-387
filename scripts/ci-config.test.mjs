@@ -148,6 +148,26 @@ test('the comment-driven opencode workflow is pinned, time-limited and serialize
     /contains\(fromJSON\('\["OWNER","MEMBER","COLLABORATOR"\]'\), github\.event\.comment\.author_association\)/,
     'a public repo must not let strangers spend the API key',
   );
+  assert.match(
+    workflow,
+    /github\.event\.comment\.user\.type\s*!=\s*'Bot'/,
+    'commands from bots must be ignored',
+  );
+  assert.match(
+    workflow,
+    /persist-credentials:\s*false/,
+    'checkout must not leave the GITHUB_TOKEN in git config',
+  );
+  assert.match(
+    workflow,
+    /mentions:\s*\/oc,\/opencode/,
+    'the accepted trigger phrases must be explicit',
+  );
+  assert.match(
+    workflow,
+    /SHARE:\s*['"]false['"]/,
+    'session sharing must be explicitly disabled',
+  );
 });
 
 test('release-please prefers a PAT and falls back to GITHUB_TOKEN', () => {

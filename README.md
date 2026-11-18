@@ -55,6 +55,37 @@ mise run dev:frontend   # SPA on http://localhost:5173
 `mise run check` is what CI runs; it must be green before merging.
 Git hooks (hk): lint on commit, `mise run check` on push, Conventional Commits in the message.
 
+## Comment-driven agent
+
+`.github/workflows/opencode.yml` runs the [OpenCode](https://opencode.ai) agent on demand: a
+comment with `/oc` or `/opencode` in an issue, a pull request or a review thread starts a run
+that answers in the same thread and, when asked, pushes a branch or opens a pull request. It
+is not part of the PR gate, and it only ever starts from a comment.
+
+- **Event:** `issue_comment` and `pull_request_review_comment`, `types: [created]` only.
+- **Who:** `author_association` must be `OWNER`, `MEMBER` or `COLLABORATOR`; comments from
+  `Bot` users are ignored. The workflow file always comes from `main`, so an untrusted fork
+  cannot change it, start a run or obtain the API key.
+- **Commands:** `mentions: /oc,/opencode` — these two phrases are the only accepted triggers.
+- **Model:** `opencode/deepseek-v4.1-flash` (`variant: low`). The key is the
+  `OPENCODE_API_KEY` GitHub Actions secret and is never stored in the repository.
+- **Authorisation:** the workflow token is read-only (`contents: read`, `id-token: write`,
+  `persist-credentials: false`); write access to comments and branches comes from the standard
+  [OpenCode GitHub App](https://github.com/apps/opencode-agent) installation over OIDC. No
+  custom agent replaces it, so there is no deployment difference to explain.
+- **Sharing:** sessions are not published — `SHARE: 'false'`. The action's `share` input is
+  deprecated and ignored in the pinned version, hence the explicit environment variable.
+- **Limits:** `timeout-minutes: 15`; one run per issue/PR at a time (`concurrency` group,
+  `cancel-in-progress: false` queues instead of overlapping).
+- **Results:** a reply in the thread with a link to the Actions run; code changes arrive as a
+  branch or a pull request. Smoke test: [issue #2](https://github.com/juliastetskaya/ai-for-developers-project-387/issues/2),
+  runs [44295888139](https://github.com/juliastetskaya/ai-for-developers-project-387/actions/runs/44295888139)
+  and [44297991064](https://github.com/juliastetskaya/ai-for-developers-project-387/actions/runs/44297991064).
+
+Prerequisites: the App is installed on the repository and the `OPENCODE_API_KEY` secret exists
+(*Settings → Secrets and variables → Actions*). Setup and troubleshooting are in
+[docs/ci.md](docs/ci.md#comment-driven-agent-opencodeyml).
+
 ## Documentation
 
 | Document | What it covers |

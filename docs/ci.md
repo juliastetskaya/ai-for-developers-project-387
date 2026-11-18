@@ -55,12 +55,19 @@ and is safe for pull requests from forks.
 starts a run that answers in the same thread and, when asked, pushes a branch or opens a
 pull request. It is not part of the PR gate; a run only ever starts from a comment.
 
+- **Triggers:** `mentions: /oc,/opencode`; only those two phrases start a run.
 - **Who can trigger it:** `issue_comment` and `pull_request_review_comment` (`created`)
-  only, and only with `author_association` `OWNER`, `MEMBER` or `COLLABORATOR`. The
-  repository is public and every run spends credits on the API key.
+  only, and only with `author_association` `OWNER`, `MEMBER` or `COLLABORATOR`; comments
+  from `Bot` users are ignored explicitly. The repository is public and every run spends
+  credits on the API key. The workflow definition is taken from `main`, not from the pull
+  request, so a fork cannot alter it or start a run — only a trusted commenter can, and the
+  secret is never exposed to a fork's own workflow.
 - **Permissions:** `contents: read` + `id-token: write`. Write access to comments and
   branches comes from the OpenCode GitHub App installation token exchanged over OIDC, so
   the workflow's own `GITHUB_TOKEN` stays read-only.
+- **Sharing:** sessions are not published — `SHARE: 'false'`. The action's deprecated
+  `share` input is ignored by the pinned version, so the decision is expressed as an
+  environment variable.
 - **One run per task:** `concurrency.group` is the issue/PR number and
   `cancel-in-progress: false`, so a second comment on the same task queues behind the
   running one instead of overlapping it or killing a run mid-push.
