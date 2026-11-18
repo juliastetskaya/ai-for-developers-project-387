@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/juliastetskaya/ai-for-developers-project-387/compare/v1.2.0...v1.3.0) (2026-11-18)
+
+
+### Features
+
+* **ci:** run opencode on /oc comments ([#1](https://github.com/juliastetskaya/ai-for-developers-project-387/issues/1)) ([04faf04](https://github.com/juliastetskaya/ai-for-developers-project-387/commit/04faf043a0f04fda0ab146fddc57044e522a2710))
+
 ## [1.2.0](https://github.com/juliastetskaya/ai-for-developers-project-386/compare/v1.1.0...v1.2.0) (2026-11-11)
 
 
