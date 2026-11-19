@@ -21,10 +21,14 @@ jobs:
       github.event.comment.user.type != 'Bot' &&
       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 60
     env:
       VERSION: 1.19.6
       SHARE: "false"
+      # Headless runs cannot answer permission prompts: an `ask` for a path outside
+      # the checkout (e.g. `/tmp/...`) blocks the session until the job times out.
+      # Deny upfront so the agent gets a tool error and keeps working in the repo.
+      OPENCODE_PERMISSION: '{"external_directory":"deny"}'
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
