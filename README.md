@@ -69,13 +69,16 @@ is not part of the PR gate, and it only ever starts from a comment.
 - **Commands:** `mentions: /oc,/opencode` — these two phrases are the only accepted triggers.
 - **Model:** `opencode/deepseek-v4.1-flash` (`variant: low`). The key is the
   `OPENCODE_API_KEY` GitHub Actions secret and is never stored in the repository.
-- **Authorisation:** the workflow token is read-only (`contents: read`, `id-token: write`,
-  `persist-credentials: false`); write access to comments and branches comes from the standard
-  [OpenCode GitHub App](https://github.com/apps/opencode-agent) installation over OIDC. No
-  custom agent replaces it, so there is no deployment difference to explain.
+- **Authorisation:** the workflow token is read-only for code (`contents: read`, `id-token: write`,
+  `persist-credentials: false`) and writable for the tracker (`issues: write`); write access to
+  comments and branches comes from the standard
+  [OpenCode GitHub App](https://github.com/apps/opencode-agent) installation over OIDC. The
+  token is exported as `GH_TOKEN`, so the agent publishes issues with `gh` instead of leaving
+  drafts in the repository. No custom agent replaces it, so there is no deployment difference
+  to explain.
 - **Sharing:** sessions are not published — `SHARE: 'false'`. The action's `share` input is
   deprecated and ignored in the pinned version, hence the explicit environment variable.
-- **Limits:** `timeout-minutes: 15`; one run per issue/PR at a time (`concurrency` group,
+- **Limits:** `timeout-minutes: 60`; one run per issue/PR at a time (`concurrency` group,
   `cancel-in-progress: false` queues instead of overlapping).
 - **Results:** a reply in the thread with a link to the Actions run; code changes arrive as a
   branch or a pull request. Smoke test: [issue #2](https://github.com/juliastetskaya/ai-for-developers-project-387/issues/2),

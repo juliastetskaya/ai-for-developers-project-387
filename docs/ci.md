@@ -62,16 +62,18 @@ pull request. It is not part of the PR gate; a run only ever starts from a comme
   credits on the API key. The workflow definition is taken from `main`, not from the pull
   request, so a fork cannot alter it or start a run — only a trusted commenter can, and the
   secret is never exposed to a fork's own workflow.
-- **Permissions:** `contents: read` + `id-token: write`. Write access to comments and
-  branches comes from the OpenCode GitHub App installation token exchanged over OIDC, so
-  the workflow's own `GITHUB_TOKEN` stays read-only.
+- **Permissions:** `contents: read` + `id-token: write` + `issues: write`. Write access to
+  comments and branches comes from the OpenCode GitHub App installation token exchanged over
+  OIDC, so the workflow's own `GITHUB_TOKEN` stays read-only for code. It is exported as
+  `GH_TOKEN` so the in-run `gh` CLI can create, label, link and close issues — without it the
+  agent cannot reach the tracker and leaves drafts in the repository instead.
 - **Sharing:** sessions are not published — `SHARE: 'false'`. The action's deprecated
   `share` input is ignored by the pinned version, so the decision is expressed as an
   environment variable.
 - **One run per task:** `concurrency.group` is the issue/PR number and
   `cancel-in-progress: false`, so a second comment on the same task queues behind the
   running one instead of overlapping it or killing a run mid-push.
-- **Limits:** `timeout-minutes: 15`; `fetch-depth: 1`; `persist-credentials: false`.
+- **Limits:** `timeout-minutes: 60`; `fetch-depth: 1`; `persist-credentials: false`.
 - **Model:** `opencode/deepseek-v4.1-flash` (provider `opencode`, OpenCode Console) with
   `variant: low` for reasoning effort — a comment run stays fast and cheap. The model also
   accepts `high` and `max`; switch to `opencode/deepseek-v4-pro` if a task needs it.

@@ -137,11 +137,16 @@ test('the comment-driven opencode workflow is pinned, time-limited and serialize
     'runs on one task must share a concurrency group',
   );
   assert.match(workflow, /cancel-in-progress:\s*false/);
-  assert.match(workflow, /permissions:\n\s+contents: read\n\s+id-token: write/);
+  assert.match(workflow, /permissions:\n\s+contents: read\n\s+id-token: write\n\s+issues: write/);
   assert.doesNotMatch(
     workflow,
-    /(contents|pull-requests|issues):\s*write/,
-    'write permissions must come from the OpenCode App token, not the workflow',
+    /(contents|pull-requests):\s*write/,
+    'git writes must come from the OpenCode App token, not the workflow',
+  );
+  assert.match(
+    workflow,
+    /GH_TOKEN:\s*\$\{\{\s*secrets\.GITHUB_TOKEN\s*\}\}/,
+    'the agent needs an issues-scoped token to publish tickets with gh',
   );
   assert.match(
     workflow,

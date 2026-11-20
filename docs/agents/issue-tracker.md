@@ -19,6 +19,8 @@ Issues and specs for this repo live as GitHub issues in the new repository. Use 
 
 `gh` infers `juliastetskaya/ai-for-developers-project-387` from `git remote -v` when run inside a clone; pass `--repo juliastetskaya/ai-for-developers-project-387` explicitly when running elsewhere. Do not create issues in the first project's repository (`ai-for-developers-project-386`).
 
+In `.github/workflows/opencode.yml` runs the workflow exports `GH_TOKEN`, so `gh issue create` works from the agent. If `gh` reports that it is not authenticated, do not fall back to local markdown files: report the failure in the thread instead, because drafts in the repository are not tickets.
+
 File issues only into the user's own repo. Never file into `mattpocock/skills` (the repo these skills come from) unless the user owns it. In a fork, `gh` can default to the upstream parent, so before the first `gh issue create` of a session, check the target with `gh repo view --json nameWithOwner` and confirm it with the user if it is not their repo.
 
 ## Pull requests as a triage surface

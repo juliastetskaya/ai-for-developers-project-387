@@ -9,6 +9,7 @@ on:
 permissions:
   contents: read
   id-token: write
+  issues: write
 
 concurrency:
   group: opencode-${{ github.event.issue.number || github.event.pull_request.number }}
@@ -29,6 +30,11 @@ jobs:
       # the checkout (e.g. `/tmp/...`) blocks the session until the job times out.
       # Deny upfront so the agent gets a tool error and keeps working in the repo.
       OPENCODE_PERMISSION: '{"external_directory":"deny"}'
+      # `gh` is unauthenticated by default: the App token exchanged over OIDC only
+      # covers git pushes and comments. Without a token the agent cannot publish
+      # issues and falls back to local markdown drafts, so give it one that can
+      # create, label and close issues in this repository.
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
