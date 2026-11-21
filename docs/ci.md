@@ -115,14 +115,13 @@ behaviour before `/to-spec` and `/to-tickets` run.
 - **Generated issues:** skipped when they already carry `ready-for-agent`, the triage label
   both skills apply when they publish a spec or a ticket. App-created issues are also caught
   by the bot filter.
-- **Permissions:** `contents: read` + `id-token: write` as in the manual workflow, plus
-  `issues: read` for the duplicate guard. The triage comment is posted by the OpenCode GitHub
-  App over OIDC; `GITHUB_TOKEN` gets no write permissions.
+- **Permissions:** `contents: read` + `id-token: write`. The triage comment is posted by the
+  OpenCode GitHub App over OIDC; `GITHUB_TOKEN` gets no write permissions.
 - **Limits:** `timeout-minutes: 15`; concurrency group `issue-triage-<issue number>` with
   `cancel-in-progress: false`; `OPENCODE_PERMISSION` denies `edit` and `external_directory`.
-- **No duplicate reports:** the report carries the hidden marker
-  `<!-- issue-triage-report -->`, and a `gh api` step before OpenCode skips the agent when a
-  comment with that marker already exists.
+- **Report marker:** the report carries the hidden marker `<!-- issue-triage-report -->` so
+  later automation can recognise it. No duplicate guard is needed: the workflow runs only on
+  `opened`, before any triage comment can exist.
 
 ## Run the gates locally
 
