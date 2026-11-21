@@ -75,7 +75,7 @@ is not part of the PR gate, and it only ever starts from a comment.
   custom agent replaces it, so there is no deployment difference to explain.
 - **Sharing:** sessions are not published — `SHARE: 'false'`. The action's `share` input is
   deprecated and ignored in the pinned version, hence the explicit environment variable.
-- **Limits:** `timeout-minutes: 15`; one run per issue/PR at a time (`concurrency` group,
+- **Limits:** `timeout-minutes: 60`; one run per issue/PR at a time (`concurrency` group,
   `cancel-in-progress: false` queues instead of overlapping).
 - **Results:** a reply in the thread with a link to the Actions run; code changes arrive as a
   branch or a pull request. Smoke test: [issue #2](https://github.com/juliastetskaya/ai-for-developers-project-387/issues/2),

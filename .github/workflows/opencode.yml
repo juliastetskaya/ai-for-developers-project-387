@@ -6,9 +6,7 @@ on:
   pull_request_review_comment:
     types: [created]
 
-permissions:
-  contents: read
-  id-token: write
+permissions: {}
 
 concurrency:
   group: opencode-${{ github.event.issue.number || github.event.pull_request.number }}
@@ -22,6 +20,9 @@ jobs:
       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
     env:
       VERSION: 1.19.6
       SHARE: "false"
