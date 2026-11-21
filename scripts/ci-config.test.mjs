@@ -170,6 +170,77 @@ test('the comment-driven opencode workflow is pinned, time-limited and serialize
   );
 });
 
+test('automatic issue triage runs only for trusted humans on unprepared issues', () => {
+  const workflow = read('.github/workflows/issue-triage.yml');
+
+  assert.match(workflow, /^name:\s*issue-triage$/m);
+  assert.match(workflow, /^on:\n\s+issues:\n\s+types:\s*\[opened\]$/m);
+
+  const uses = workflow.split('\n').filter((line) => /^\s*uses:/.test(line));
+  assert.ok(uses.length >= 2, 'issue-triage.yml must check out the repo and run the action');
+  for (const line of uses) {
+    assert.match(
+      line,
+      /@[0-9a-f]{40}\s+#\s*v?\d+\.\d+\.\d+/,
+      `every action must be pinned to a full commit SHA with its release in a comment: ${line.trim()}`,
+    );
+  }
+
+  assert.match(
+    workflow,
+    /github\.event\.issue\.user\.type\s*!=\s*'Bot'/,
+    'issues opened by bots must be ignored',
+  );
+  assert.match(
+    workflow,
+    /contains\(fromJSON\('\["OWNER","MEMBER","COLLABORATOR"\]'\), github\.event\.issue\.author_association\)/,
+    'only trusted repository participants may spend the API key',
+  );
+  assert.match(
+    workflow,
+    /!contains\(github\.event\.issue\.labels\.\*\.name, 'ready-for-agent'\)/,
+    'issues already prepared by a skill must be skipped',
+  );
+
+  assert.match(workflow, /^\s+timeout-minutes:\s*15$/m);
+  assert.match(
+    workflow,
+    /group:\s*issue-triage-\$\{\{\s*github\.event\.issue\.number\s*\}\}/,
+    'runs for one issue must share a dedicated concurrency group',
+  );
+  assert.match(workflow, /cancel-in-progress:\s*false/);
+
+  assert.match(workflow, /permissions:\n\s+contents: read\n\s+id-token: write/);
+  assert.match(workflow, /^\s+issues: read$/m);
+  assert.doesNotMatch(
+    workflow,
+    /(contents|pull-requests|issues):\s*write/,
+    'write access must come from the OpenCode App token, not the workflow',
+  );
+  assert.match(
+    workflow,
+    /persist-credentials:\s*false/,
+    'checkout must not leave the GITHUB_TOKEN in git config',
+  );
+
+  assert.match(
+    workflow,
+    /prompt:\s*\|/,
+    'the issues event requires a custom prompt',
+  );
+  assert.match(
+    workflow,
+    /<!-- issue-triage-report -->/,
+    'the report marker is the duplicate guard',
+  );
+  assert.match(workflow, /SHARE:\s*['"]false['"]/);
+  assert.match(
+    workflow,
+    /OPENCODE_PERMISSION:\s*\|\n\s+\{\n\s+"external_directory": "deny",\n\s+"edit": "deny"\n\s+\}/,
+    'the permission object must be passed as JSON to the OpenCode step',
+  );
+});
+
 test('release-please prefers a PAT and falls back to GITHUB_TOKEN', () => {
   const workflow = read('.github/workflows/release-please.yml');
 

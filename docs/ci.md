@@ -71,7 +71,7 @@ pull request. It is not part of the PR gate; a run only ever starts from a comme
 - **One run per task:** `concurrency.group` is the issue/PR number and
   `cancel-in-progress: false`, so a second comment on the same task queues behind the
   running one instead of overlapping it or killing a run mid-push.
-- **Limits:** `timeout-minutes: 15`; `fetch-depth: 1`; `persist-credentials: false`.
+- **Limits:** `timeout-minutes: 60`; `fetch-depth: 1`; `persist-credentials: false`.
 - **Model:** `opencode/deepseek-v4.1-flash` (provider `opencode`, OpenCode Console) with
   `variant: low` for reasoning effort — a comment run stays fast and cheap. The model also
   accepts `high` and `max`; switch to `opencode/deepseek-v4-pro` if a task needs it.
@@ -99,6 +99,30 @@ The secret check prints only the name. For the App, open
 (Settings → GitHub Apps) and look for `OpenCode Agent`; the App listings API
 (`GET /repos/{owner}/{repo}/installation`) only answers to an App JWT, so a missing
 installation shows up as a run that stops at the token-exchange step.
+
+## Automatic issue triage (`issue-triage.yml`)
+
+`.github/workflows/issue-triage.yml` triages every newly opened issue: OpenCode reads the
+issue, the repository docs and the relevant code, and posts one structured comment with the
+request summary, expected behaviour, existing functionality, open questions, risks and an
+initial scope. It never writes code or creates specifications or tickets; a human approves the
+behaviour before `/to-spec` and `/to-tickets` run.
+
+- **Trigger:** `issues`, `types: [opened]` only — comments, edits and label changes do not
+  re-run it.
+- **Who:** `author_association` must be `OWNER`, `MEMBER` or `COLLABORATOR`, and
+  `issue.user.type` must not be `Bot`. Enforced in the job-level `if` on the event payload.
+- **Generated issues:** skipped when they already carry `ready-for-agent`, the triage label
+  both skills apply when they publish a spec or a ticket. App-created issues are also caught
+  by the bot filter.
+- **Permissions:** `contents: read` + `id-token: write` as in the manual workflow, plus
+  `issues: read` for the duplicate guard. The triage comment is posted by the OpenCode GitHub
+  App over OIDC; `GITHUB_TOKEN` gets no write permissions.
+- **Limits:** `timeout-minutes: 15`; concurrency group `issue-triage-<issue number>` with
+  `cancel-in-progress: false`; `OPENCODE_PERMISSION` denies `edit` and `external_directory`.
+- **No duplicate reports:** the report carries the hidden marker
+  `<!-- issue-triage-report -->`, and a `gh api` step before OpenCode skips the agent when a
+  comment with that marker already exists.
 
 ## Run the gates locally
 

@@ -60,6 +60,10 @@ Do not bypass hooks (`--no-verify`) — CI re-runs the same checks.
   via the `OPENCODE_API_KEY` secret. Write permissions come from the OpenCode GitHub App over OIDC,
   so the workflow itself stays `contents: read` + `id-token: write`. Not part of the PR gate; see
   [`docs/ci.md`](docs/ci.md).
+- `.github/workflows/issue-triage.yml` — automatic triage: every newly opened issue from an
+  owner/member/collaborator (never a bot) gets one read-only OpenCode triage comment. Issues
+  already labelled `ready-for-agent` are skipped, so `/to-spec` and `/to-tickets` output is
+  never triaged again. Not part of the PR gate; see [`docs/ci.md`](docs/ci.md).
 - `main` is protected: the `check` status is required (strict, admins enforced). The pipeline, local gates and the branch-protection commands are documented in [`docs/ci.md`](docs/ci.md). If a new workflow/job name replaces `check`, update the required status context.
 
 ## Deployment
@@ -77,7 +81,7 @@ Do not bypass hooks (`--no-verify`) — CI re-runs the same checks.
 
 ### Issue tracker
 
-Issues live in this repo's GitHub Issues: https://github.com/juliastetskaya/ai-for-developers-project-387/issues, managed via the `gh` CLI. New tickets go to the new repository; the first project's [specification](https://github.com/juliastetskaya/ai-for-developers-project-386/issues/15) and [decision map](https://github.com/juliastetskaya/ai-for-developers-project-386/issues/3) are linked from `docs/agents/issue-tracker.md`.
+Issues live in this repo's GitHub Issues: https://github.com/juliastetskaya/ai-for-developers-project-387/issues, managed via the `gh` CLI. New tickets go to the new repository; the first project's [specification](https://github.com/juliastetskaya/ai-for-developers-project-386/issues/15) and [decision map](https://github.com/juliastetskaya/ai-for-developers-project-386/issues/3) are linked from `docs/agents/issue-tracker.md`. Issues created by `/to-spec` and `/to-tickets` must carry `--label ready-for-agent` on the `gh issue create` call itself (see `docs/agents/issue-tracker.md`), so the label is present from the first moment.
 
 ### Triage labels
 
