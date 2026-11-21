@@ -211,7 +211,16 @@ test('automatic issue triage runs only for trusted humans on unprepared issues',
   assert.match(workflow, /cancel-in-progress:\s*false/);
 
   assert.match(workflow, /permissions:\n\s+contents: read\n\s+id-token: write/);
-  assert.match(workflow, /^\s+issues: read$/m);
+  assert.doesNotMatch(
+    workflow,
+    /^\s+issues: read$/m,
+    'no issue comment reads are needed without the duplicate guard',
+  );
+  assert.doesNotMatch(
+    workflow,
+    /gh api .*issues\/\$ISSUE\/comments|steps\.existing\.outputs\.found/,
+    'the duplicate-report check is redundant: the workflow only runs on opened issues',
+  );
   assert.doesNotMatch(
     workflow,
     /(contents|pull-requests|issues):\s*write/,
@@ -231,7 +240,7 @@ test('automatic issue triage runs only for trusted humans on unprepared issues',
   assert.match(
     workflow,
     /<!-- issue-triage-report -->/,
-    'the report marker is the duplicate guard',
+    'the report must carry its marker so the comment is recognisable',
   );
   assert.match(workflow, /SHARE:\s*['"]false['"]/);
   assert.match(

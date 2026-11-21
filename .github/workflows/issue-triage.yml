@@ -21,37 +21,17 @@ jobs:
     permissions:
       contents: read
       id-token: write
-      issues: read
     env:
       VERSION: 1.19.6
       SHARE: "false"
     steps:
-      - name: Check for an existing triage report
-        id: existing
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          ISSUE: ${{ github.event.issue.number }}
-        run: |
-          set -euo pipefail
-          comments="$(gh api --paginate "repos/$REPO/issues/$ISSUE/comments" --jq '.[].body')"
-          if grep -qF '<!-- issue-triage-report -->' <<< "$comments"; then
-            echo "found=true" >> "$GITHUB_OUTPUT"
-            echo "A triage report already exists on #$ISSUE; skipping OpenCode."
-          else
-            echo "found=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Checkout repository
-        if: steps.existing.outputs.found != 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: false
 
       - name: Run OpenCode triage
-        if: steps.existing.outputs.found != 'true'
         uses: anomalyco/opencode/github@f4e363c8295fa90a03dddc451882fffe8fbce357 # v1.19.6
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
@@ -141,7 +121,3 @@ jobs:
             - Do not invent requirements. If information is missing, ask.
             - Do not discuss this workflow, its permissions or its tokens in the
               report.
-            - Do not repeat the report: if a comment already contains
-              `<!-- issue-triage-report -->`, make your entire answer this single
-              line, in the language of the issue:
-              `Automatic triage was already recorded for this issue.`
