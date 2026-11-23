@@ -87,6 +87,11 @@ pull request. It is not part of the PR gate; a run only ever starts from a comme
   running one instead of overlapping it or killing a run mid-push.
 - **Limits:** `timeout-minutes: 60`; `fetch-depth: 1`; `persist-credentials: false`; one
   attempt budget per pull request (`OPENCODE_PR_ATTEMPT_BUDGET`).
+- **Workflow files are read-only for the agent:** `OPENCODE_PERMISSION` denies `edit` for
+  `.github/workflows/**`, because the App push would be rejected (see
+  [App permissions](#attempt-budget)). A CI change the agent considers necessary is
+  reported in its comment and applied by a human; otherwise the agent spends the whole run
+  and fails at `git push`, losing the final commit.
 - **Model:** `opencode/deepseek-v4.1-flash` (provider `opencode`, OpenCode Console) with
   `variant: low` for reasoning effort — a comment run stays fast and cheap. The model also
   accepts `high` and `max`; switch to `opencode/deepseek-v4-pro` if a task needs it.
@@ -135,9 +140,15 @@ separate ledger, database, artifact or workflow.
   `actions: read`, `contents: write`, `issues: write`, `metadata: read` and
   `pull_requests: write`. **There is no `Actions: write`**, so the agent cannot delete,
   cancel or re-run workflow runs with the App token; the run history is the authoritative
-  record. Re-check this after App permission changes. The workflow token's
-  `pull-requests: write` exists only in the `budget` job, which runs the default-branch
-  script; the `opencode` job has no write scope and never receives that token.
+  record. **There is no `Workflows: write` either**, and an installation can only narrow
+  the permissions the App requests, so the App can never push a change under
+  `.github/workflows/**`: GitHub answers
+  `refusing to allow a GitHub App to create or update workflow ... without 'workflows' permission`
+  and the entire push is rejected. That is why `opencode.yml` denies `edit` for that path
+  instead of letting the run fail at the last step. Re-check this after App permission
+  changes. The workflow token's `pull-requests: write` exists only in the `budget` job,
+  which runs the default-branch script; the `opencode` job has no write scope and never
+  receives that token.
 
 Limitations of this simplified approach:
 

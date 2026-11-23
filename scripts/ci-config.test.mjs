@@ -356,6 +356,36 @@ test('the model key is checked before the agent', () => {
   );
 });
 
+test('the agent cannot edit workflow files the App is not allowed to push', () => {
+  const workflow = read('.github/workflows/opencode.yml');
+  const opencodeJob = workflowJob(workflow, 'opencode');
+
+  assert.match(
+    opencodeJob,
+    /OPENCODE_PERMISSION:/,
+    'the model job must scope what the agent may do',
+  );
+  assert.match(
+    opencodeJob,
+    /"external_directory":\s*"deny"/,
+    'a headless run cannot answer a prompt for a path outside the checkout',
+  );
+  // The App has no `workflows` permission and an installation cannot widen what the
+  // App requests, so any push that touches `.github/workflows/**` is rejected by
+  // GitHub after the work is done. Rules are evaluated last-match-wins, so the
+  // broad allow has to come first.
+  assert.match(
+    opencodeJob,
+    /"edit":\s*\{[^}]*"\*":\s*"allow"[^}]*"\.github\/workflows\/\*\*":\s*"deny"[^}]*\}/s,
+    'the agent must not edit a workflow file: the App push would be rejected',
+  );
+  assert.doesNotMatch(
+    opencodeJob,
+    /"\.github\/workflows\/\*\*":\s*"allow"/,
+    'a later allow rule would re-enable workflow edits',
+  );
+});
+
 test('automatic issue triage runs only for trusted humans on unprepared issues', () => {
   const workflow = read('.github/workflows/issue-triage.yml');
 
