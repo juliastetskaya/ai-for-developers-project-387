@@ -7,6 +7,9 @@ pnpm = "10.15.1"
 hk = "2.11.1"
 pitchfork = "2.33.1"
 actionlint = "1.7.12"
+# actionlint delegates to shellcheck when it is on PATH; pin it so `mise run check:ci`
+# reports the same findings locally as on the GitHub runner.
+shellcheck = "0.10.0"
 
 [tasks.setup]
 description = "Install dependencies and generate the API SDK"

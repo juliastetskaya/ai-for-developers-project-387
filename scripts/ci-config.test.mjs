@@ -383,7 +383,7 @@ test('independent AI review separates execution from idempotent comment publicat
   );
   assert.match(
     workflow,
-    /Reviewed commit `%s`\. \[Workflow run\]\(%s\)/,
+    /Reviewed commit \\?`%s\\?`\. \[Workflow run\]\(%s\)/,
     'the published comment header must include the run link',
   );
   assert.match(workflow, /closingIssuesReferences/);
@@ -408,7 +408,7 @@ test('independent AI review separates execution from idempotent comment publicat
   assert.match(workflow, /unset GITHUB_TOKEN GH_TOKEN/);
   assert.match(
     workflow,
-    /Reviewed commit `%s`/,
+    /Reviewed commit \\?`%s\\?`/,
     'the published comment must identify the exact reviewed commit',
   );
 

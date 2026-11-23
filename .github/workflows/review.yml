@@ -434,7 +434,7 @@ jobs:
 
           {
             echo '<!-- ai-review-report -->'
-            printf '> **AI review — advisory only.** Reviewed commit `%s`. [Workflow run](%s).\n\n' "$HEAD_SHA" "$RUN_URL"
+            printf "> **AI review — advisory only.** Reviewed commit \`%s\`. [Workflow run](%s).\n\n" "$HEAD_SHA" "$RUN_URL"
             if [ "$(wc -c < review/report.md)" -gt 50000 ]; then
               head -c 50000 review/report.md | iconv -f UTF-8 -t UTF-8 -c
               printf '\n\n_Report truncated at 50 KB._\n'
