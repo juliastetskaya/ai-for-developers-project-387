@@ -76,7 +76,22 @@ jobs:
       # Headless runs cannot answer permission prompts: an `ask` for a path outside
       # the checkout (e.g. `/tmp/...`) blocks the session until the job times out.
       # Deny upfront so the agent gets a tool error and keeps working in the repo.
-      OPENCODE_PERMISSION: '{"external_directory":"deny"}'
+      #
+      # `.github/workflows/**` is denied as well: the OpenCode GitHub App has no
+      # `workflows` permission, and an installation cannot grant one the App does not
+      # request, so GitHub rejects the push with "refusing to allow a GitHub App to
+      # create or update workflow ... without `workflows` permission". Without this
+      # rule the agent applies a CI change, the final push is rejected and the whole
+      # run fails after the work is already done. With it, the agent reports the
+      # needed CI change in its comment and a human applies it.
+      OPENCODE_PERMISSION: |
+        {
+          "external_directory": "deny",
+          "edit": {
+            "*": "allow",
+            ".github/workflows/**": "deny"
+          }
+        }
     steps:
       # The agent works on the pull request content: this checkout is the merge
       # ref for review comments and the default branch for issue comments. It
