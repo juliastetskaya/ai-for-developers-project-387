@@ -1,3 +1,4 @@
+import { bookingsDelete } from 'api-client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { deleteBooking } from './api'
 
@@ -25,6 +26,20 @@ describe('deleteBooking', () => {
     const request = fetchMock.mock.calls[0][0] as Request
     expect(request.method).toBe('DELETE')
     expect(request.url).toBe('http://localhost:3000/bookings/42')
+  })
+
+  it('accepts the generated SDK result for a bodyless 204 as success', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(new Response(null, { status: 204 })),
+    )
+
+    const result = await bookingsDelete({ path: { id: 42 } })
+
+    expect(result.error).toBeUndefined()
+    expect(result.data).toBeNull()
   })
 
   it('returns the normalized not_found error for a 404', async () => {
