@@ -32,6 +32,57 @@ jobs:
       - name: Run all checks
         run: mise run check
 
+  # PR-only evidence job: runs the browser scenarios against the author's exact
+  # head commit, not the temporary pull-request merge commit. It needs no
+  # repository secrets and uploads the trace, results and checked-out SHA so a
+  # human can verify the head before merging.
+  head-browser-evidence:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Verify and record the checked-out SHA
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/head-browser"
+          actual=$(git rev-parse HEAD)
+          printf '%s\n' "$actual" | tee "$RUNNER_TEMP/head-browser/head-sha.txt"
+          test "$actual" = "$HEAD_SHA"
+
+      - name: Install mise and tools
+        uses: jdx/mise-action@v5
+
+      - name: Install dependencies and generate API SDK
+        run: mise run setup
+
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run the delete and adjacent guest browser scenarios
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ runner.temp }}/head-browser/results.json
+          TESTED_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          pnpm exec playwright test e2e/booking-delete.spec.ts e2e/golden-path.spec.ts \
+            --trace on --reporter=list,json \
+            --output "$RUNNER_TEMP/head-browser/traces"
+
+      - name: Upload browser evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: head-browser-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/head-browser/
+          if-no-files-found: error
+
   # Separate job: the image build is slow and only guards the production
   # artifact (Dockerfile, .dockerignore, entrypoint, same-origin SPA build), so
   # it runs on pull requests without delaying the main `check` gate.
