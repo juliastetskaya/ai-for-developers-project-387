@@ -79,10 +79,6 @@ export class BookingsRepository {
     return rows.map(toBooking);
   }
 
-  /**
-   * Removes the booking row by id. Returns whether a row was affected, so the
-   * service can distinguish a real delete from an id that does not exist.
-   */
   deleteById(id: number): boolean {
     const result = this.database.db
       .prepare('DELETE FROM "Booking" WHERE "id" = ?')
