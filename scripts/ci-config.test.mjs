@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -137,11 +137,16 @@ test('the comment-driven opencode workflow is pinned, time-limited and serialize
     'runs on one task must share a concurrency group',
   );
   assert.match(workflow, /cancel-in-progress:\s*false/);
-  assert.match(workflow, /permissions:\n\s+contents: read\n\s+id-token: write/);
+  assert.match(
+    workflow,
+    /permissions:\n\s+contents: read\n\s+id-token: write\n\s+actions: read\n(?:\s+#[^\n]*\n)*\s+pull-requests: write/,
+    'the gate needs run history and one comment; the model stays on the App token',
+  );
+  assert.doesNotMatch(workflow, /contents:\s*write/);
   assert.doesNotMatch(
     workflow,
-    /(contents|pull-requests|issues):\s*write/,
-    'write permissions must come from the OpenCode App token, not the workflow',
+    /issues:\s*write/,
+    'the budget notice only comments on pull requests',
   );
   assert.match(
     workflow,
@@ -167,6 +172,136 @@ test('the comment-driven opencode workflow is pinned, time-limited and serialize
     workflow,
     /SHARE:\s*['"]false['"]/,
     'session sharing must be explicitly disabled',
+  );
+});
+
+test('the opencode attempt budget is checked before the model and derived from tagged runs', () => {
+  const workflow = read('.github/workflows/opencode.yml');
+
+  assert.match(
+    workflow,
+    /^run-name:\s*["']opencode ref-\$\{\{\s*github\.event\.issue\.number\s*\|\|\s*github\.event\.pull_request\.number\s*\}\}["']$/m,
+    'run-name must tag every run with the issue/PR number',
+  );
+  assert.doesNotMatch(
+    workflow.slice(workflow.indexOf('run-name:'), workflow.indexOf('\non:')),
+    /comment\.body/,
+    'the run name must not interpolate user input',
+  );
+
+  const budgetDefinitions = workflow.match(/OPENCODE_PR_ATTEMPT_BUDGET/g) ?? [];
+  assert.equal(
+    budgetDefinitions.length,
+    1,
+    'the attempt budget must be one constant, not several knobs',
+  );
+  assert.match(workflow, /OPENCODE_PR_ATTEMPT_BUDGET:\s*["']\d+["']/);
+
+  const gate = workflow.indexOf('- name: Check the attempt budget');
+  const keyCheck = workflow.indexOf('- name: Check the model key');
+  const model = workflow.indexOf('- name: Run OpenCode');
+  assert.notEqual(gate, -1, 'opencode.yml must have a budget gate step');
+  assert.notEqual(keyCheck, -1, 'opencode.yml must have a model-key check step');
+  assert.notEqual(model, -1, 'opencode.yml must still run the model');
+  assert.ok(gate < keyCheck, 'the model-key check must run after the budget gate');
+  assert.ok(keyCheck < model, 'the model-key check must run before the model');
+
+  const gateStep = workflow.slice(gate, keyCheck);
+  assert.match(gateStep, /id:\s*budget/);
+  assert.match(gateStep, /run:\s*node scripts\/opencode-budget\.mjs check/);
+  assert.match(gateStep, /GH_TOKEN:\s*\$\{\{\s*github\.token\s*\}\}/);
+  assert.doesNotMatch(
+    gateStep,
+    /OPENCODE_API_KEY/,
+    'the gate must not see the model key',
+  );
+  assert.doesNotMatch(
+    gateStep,
+    /continue-on-error/,
+    'a failed gate must fail the job and block the model',
+  );
+
+  const modelStep = workflow.slice(model);
+  assert.match(
+    modelStep,
+    /if:\s*steps\.budget\.outputs\.allowed == 'true'/,
+    'the model must only run when the gate allows it',
+  );
+  assert.doesNotMatch(
+    modelStep,
+    /(GH_TOKEN|GITHUB_TOKEN):|github\.token|secrets\.GITHUB_TOKEN/,
+    'the model step must not receive the workflow token',
+  );
+  assert.match(modelStep, /OPENCODE_API_KEY/, 'the model step still needs its own key');
+
+  assert.match(workflow, /actions: read/, 'the gate reads the Actions run history');
+  assert.doesNotMatch(
+    workflow,
+    /workflow_dispatch/,
+    'a manual trigger would bypass the budget',
+  );
+});
+
+test('the budget script, its unit tests and the docs are wired into the repository', () => {
+  const script = read('scripts/opencode-budget.mjs');
+  assert.match(script, /actions\/workflows\/opencode\.yml\/runs/);
+  assert.match(script, /display_title !== tag/);
+  assert.match(script, /currentRunTagMatches/);
+  assert.match(script, /run_attempt/);
+  assert.match(script, /limit_exhausted/);
+  assert.match(script, /budget_check_error/);
+  assert.match(script, /needs human/);
+  assert.match(script, /NOTICE_MARKER/);
+
+  const tests = read('scripts/opencode-budget.test.mjs');
+  assert.match(tests, /countAttempts/);
+  assert.match(tests, /decide/);
+
+  assert.match(
+    miseTask('check:ci'),
+    /opencode-budget\.test\.mjs/,
+    'the attempt-counting unit tests must run in check:ci',
+  );
+
+  const docs = read('docs/ci.md');
+  for (const term of [
+    'OPENCODE_PR_ATTEMPT_BUDGET',
+    'limit_exhausted',
+    'budget_check_error',
+    'needs human',
+  ]) {
+    assert.match(docs, new RegExp(term), `docs/ci.md must document ${term}`);
+  }
+
+  const budgetWorkflows = readdirSync(join(root, '.github/workflows')).filter((name) =>
+    /budget/.test(name),
+  );
+  assert.deepEqual(
+    budgetWorkflows,
+    [],
+    'the budget belongs in opencode.yml, not a separate workflow',
+  );
+});
+
+test('the model key is checked before the agent', () => {
+  const workflow = read('.github/workflows/opencode.yml');
+  const keyCheck = workflow.indexOf('- name: Check the model key');
+  const model = workflow.indexOf('- name: Run OpenCode');
+  assert.ok(keyCheck !== -1 && keyCheck < model);
+
+  const keyStep = workflow.slice(keyCheck, model);
+  assert.match(keyStep, /if:\s*steps\.budget\.outputs\.allowed == 'true'/);
+  assert.match(
+    keyStep,
+    /OPENCODE_API_KEY:\s*\$\{\{\s*secrets\.OPENCODE_API_KEY\s*\}\}/,
+    'the preflight must inspect the real secret',
+  );
+  assert.match(keyStep, /\[ -z "\$\{OPENCODE_API_KEY\}" \]/, 'an empty key must fail');
+  assert.match(keyStep, /exit 1/);
+  assert.doesNotMatch(
+    keyStep,
+    /GH_TOKEN|github\.token/,
+    'the key check must not receive the workflow token',
   );
 });
 

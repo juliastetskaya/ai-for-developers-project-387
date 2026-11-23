@@ -69,14 +69,24 @@ is not part of the PR gate, and it only ever starts from a comment.
 - **Commands:** `mentions: /oc,/opencode` — these two phrases are the only accepted triggers.
 - **Model:** `opencode/deepseek-v4.1-flash` (`variant: low`). The key is the
   `OPENCODE_API_KEY` GitHub Actions secret and is never stored in the repository.
-- **Authorisation:** the workflow token is read-only (`contents: read`, `id-token: write`,
-  `persist-credentials: false`); write access to comments and branches comes from the standard
-  [OpenCode GitHub App](https://github.com/apps/opencode-agent) installation over OIDC. No
-  custom agent replaces it, so there is no deployment difference to explain.
+- **Authorisation:** the OpenCode step never receives the workflow token
+  (`contents: read`, `id-token: write`, `persist-credentials: false`); write access to
+  comments and branches comes from the standard
+  [OpenCode GitHub App](https://github.com/apps/opencode-agent) installation over OIDC. The
+  gate step alone gets `actions: read` (run history) and `pull-requests: write` (one sticky
+  budget notice). No custom agent replaces it, so there is no deployment difference to
+  explain.
 - **Sharing:** sessions are not published — `SHARE: 'false'`. The action's `share` input is
   deprecated and ignored in the pinned version, hence the explicit environment variable.
 - **Limits:** `timeout-minutes: 60`; one run per issue/PR at a time (`concurrency` group,
-  `cancel-in-progress: false` queues instead of overlapping).
+  `cancel-in-progress: false` queues instead of overlapping); one attempt budget per pull
+  request (`OPENCODE_PR_ATTEMPT_BUDGET`, currently 3). The gate reads the Actions run
+  history tagged by `run-name: opencode ref-<N>`, counts re-runs, cancellations and
+  timeouts, and blocks the model with a `limit_exhausted` comment (attempt, SHA, run link,
+  needs human) when the budget is spent. A failed budget check blocks the model too.
+  Comments cannot reset the budget, and `/oc` on a plain issue is not budgeted. A missing
+  `OPENCODE_API_KEY` fails a small preflight step before the agent; any other failure or
+  timeout is diagnosed from the linked Actions run, and a human chooses the next step.
 - **Results:** a reply in the thread with a link to the Actions run; code changes arrive as a
   branch or a pull request. Smoke test: [issue #2](https://github.com/juliastetskaya/ai-for-developers-project-387/issues/2),
   runs [44295888139](https://github.com/juliastetskaya/ai-for-developers-project-387/actions/runs/44295888139)

@@ -64,22 +64,90 @@ pull request. It is not part of the PR gate; a run only ever starts from a comme
   credits on the API key. The workflow definition is taken from `main`, not from the pull
   request, so a fork cannot alter it or start a run — only a trusted commenter can, and the
   secret is never exposed to a fork's own workflow.
-- **Permissions:** `contents: read` + `id-token: write`. Write access to comments and
-  branches comes from the OpenCode GitHub App installation token exchanged over OIDC, so
-  the workflow's own `GITHUB_TOKEN` stays read-only.
+- **Permissions:** `contents: read`, `id-token: write`, `actions: read` and
+  `pull-requests: write`. The extra read scope lets the gate list workflow runs; the write
+  scope is used only by the gate step to post one sticky budget notice. The OpenCode step
+  never receives the workflow token (no `GITHUB_TOKEN`/`GH_TOKEN` in its environment), and
+  write access for the agent still comes from the OpenCode GitHub App over OIDC.
 - **Sharing:** sessions are not published — `SHARE: 'false'`. The action's deprecated
   `share` input is ignored by the pinned version, so the decision is expressed as an
   environment variable.
 - **One run per task:** `concurrency.group` is the issue/PR number and
   `cancel-in-progress: false`, so a second comment on the same task queues behind the
   running one instead of overlapping it or killing a run mid-push.
-- **Limits:** `timeout-minutes: 60`; `fetch-depth: 1`; `persist-credentials: false`.
+- **Limits:** `timeout-minutes: 60`; `fetch-depth: 1`; `persist-credentials: false`; one
+  attempt budget per pull request (`OPENCODE_PR_ATTEMPT_BUDGET`).
 - **Model:** `opencode/deepseek-v4.1-flash` (provider `opencode`, OpenCode Console) with
   `variant: low` for reasoning effort — a comment run stays fast and cheap. The model also
   accepts `high` and `max`; switch to `opencode/deepseek-v4-pro` if a task needs it.
 - **Pinning:** `actions/checkout` and `anomalyco/opencode/github` are pinned to full commit
   SHAs with the release tag in a trailing comment, and `VERSION` pins the CLI binary the
   action downloads to that same release. Update all three together.
+
+### Attempt budget
+
+A pull request gets `OPENCODE_PR_ATTEMPT_BUDGET` model attempts (currently `3`). The
+budget is derived from the GitHub Actions run history of this workflow; there is no
+separate ledger, database, artifact or workflow.
+
+- **Attribution:** `run-name` is `opencode ref-<number>`, where `<number>` is the pull
+  request number for `pull_request_review_comment` and `github.event.issue.number` for
+  `issue_comment`. Lists of Runs for `issue_comment` do not expose the pull request, so the
+  run name is the only reliable link. The gate only applies to pull requests; an `/oc`
+  comment on a plain issue is not budgeted.
+- **Counting:** a run counts when its `display_title` is exactly `opencode ref-<PR>`, its
+  status is `in_progress` or `completed`, its conclusion is not `skipped`, and it was
+  created after `max(PR created_at, now - 90 days)`. The number of attempts is the sum of
+  `run_attempt`; the current run is excluded and `run_attempt - 1` is added, so a re-run
+  is counted too. A completed run counts even when it was cancelled, timed out or failed.
+  A run that is still queued is not counted yet; it counts when it starts.
+- **Decision:** `used < budget` allows the run. The gate runs before the OpenCode step and
+  writes `allowed`; the model step only runs when `steps.budget.outputs.allowed == 'true'`.
+  Any error while reading the API, resolving the pull request or parsing the budget is a
+  `budget_check_error`: the job fails and the model is not called. If the current run is
+  already visible in the history and its `display_title` does not match the expected tag,
+  the gate also fails closed instead of silently starting an unlimited budget.
+- **Notice:** when the budget is exhausted the gate posts or updates one sticky comment
+  (`<!-- opencode-budget-notice -->`) with `limit_exhausted`, the attempt number, the PR
+  head SHA, a link to the current run and `needs human` («нужен человек»). A failed check
+  publishes the same comment with `budget_check_error`. No label is added, and nothing can
+  reset the budget from a comment.
+- **Re-runs and cancellation:** a GitHub re-run starts the job from its first step, so the
+  gate re-evaluates and the new `run_attempt` is counted. A manual cancellation or a
+  timeout is recorded as `cancelled`/`timed_out` and also counts. `concurrency` is
+  unchanged, so one attempt per task runs at a time.
+- **Window:** Actions run history is subject to the repository retention setting
+  (90 days on GitHub). The budget therefore cannot see attempts older than that. Runs
+  created before the `run-name` rollout are not tagged and are not counted; the budget
+  starts with the first tagged run.
+- **App permissions:** the public App metadata (`GET /apps/opencode-agent`) lists
+  `actions: read`, `contents: write`, `issues: write`, `metadata: read` and
+  `pull_requests: write`. **There is no `Actions: write`**, so the agent cannot delete,
+  cancel or re-run workflow runs with the App token; the run history is the authoritative
+  record. Re-check this after App permission changes. The workflow token's
+  `pull-requests: write` is passed only to the gate step and is not given to the model.
+
+Limitations of this simplified approach:
+
+- the limit is per pull request; `/oc` on a plain issue is not limited;
+- a new pull request starts a new budget;
+- the gate is not an atomic counter: `concurrency` and counting `in_progress` runs are the
+  serialisation, and an API lag can, in a rare race, let two attempts start together;
+- renaming the workflow or changing `run-name` resets the history-based budget (the guard
+  tests in `scripts/ci-config.test.mjs` catch this);
+- more than 1 000 workflow runs in the window fail closed instead of guessing;
+- the budget counts attempts, not tokens: one allowed attempt can still spend a lot;
+- blocked attempts also count, so raising the constant may not immediately free attempts;
+- the sticky comment is writable by the App; only the Actions history and the step summary
+  are the authoritative trail.
+
+### Failure diagnosis
+
+There is no separate result reporter. A failed, cancelled or timed-out attempt is diagnosed
+from the Actions run: the run link in the budget notice, the failed step and the step summary.
+The `Check the model key` step runs before the agent and fails early with an explicit error
+when `OPENCODE_API_KEY` is missing, so the log points at the real cause instead of an unclear
+agent failure. The next action is chosen by a human; nothing retries the agent automatically.
 
 Prerequisites — one-time, done by the repository owner:
 
