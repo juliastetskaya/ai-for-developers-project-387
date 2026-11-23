@@ -76,7 +76,10 @@ model InternalError {
   message: string;
 }
 
-/** The requested route does not exist. */
+/**
+ * The requested resource does not exist: an unknown route or an unknown
+ * Booking id.
+ */
 model NotFoundError {
   statusCode: 404;
   code: "not_found";

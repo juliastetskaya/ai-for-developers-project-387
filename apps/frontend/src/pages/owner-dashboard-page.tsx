@@ -7,6 +7,7 @@ import {
   deleteBooking,
   listMeetingTypes,
   listUpcomingBookings,
+  networkError,
   type ApiError,
   type ApiResult,
 } from '@/lib/api'
@@ -95,19 +96,23 @@ function OwnerDashboardPage() {
     setDeletingId(id)
     setDeleteError(null)
 
-    const error = await deleteBooking(id)
+    try {
+      const error = await deleteBooking(id).catch(() => networkError())
 
-    setDeletingId(null)
-    setConfirmingId(null)
+      if (error && error.code !== 'not_found') {
+        setDeleteError(error.message)
+        setFailedDeleteId(id)
+        return
+      }
 
-    if (error && error.code !== 'not_found') {
-      setDeleteError(error.message)
-      setFailedDeleteId(id)
-      return
+      setBookings((current) => current.filter((booking) => booking.id !== id))
+      setFailedDeleteId(null)
+    } finally {
+      // Whatever the outcome, the card must leave the pending state so the
+      // owner can retry.
+      setDeletingId(null)
+      setConfirmingId(null)
     }
-
-    setBookings((current) => current.filter((booking) => booking.id !== id))
-    setFailedDeleteId(null)
   }
 
   function retryDelete() {

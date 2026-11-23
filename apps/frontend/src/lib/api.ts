@@ -66,7 +66,7 @@ export function normalizeApiError(error: unknown): ApiError {
   }
 }
 
-function networkError(): ApiError {
+export function networkError(): ApiError {
   return { status: 0, code: 'network_error', message: FALLBACK_MESSAGE }
 }
 
@@ -126,9 +126,15 @@ export async function listUpcomingBookings(): Promise<ApiResult<Booking[]>> {
  * Returns the normalized error on failure so callers can branch on `code`.
  */
 export async function deleteBooking(id: number): Promise<ApiError | null> {
-  const result = await bookingsDelete({ path: { id } })
+  try {
+    const result = await bookingsDelete({ path: { id } })
 
-  return result.error !== undefined
-    ? normalizeApiError(result.error)
-    : null
+    return result.error !== undefined
+      ? normalizeApiError(result.error)
+      : null
+  } catch {
+    // A transport failure rejects instead of returning an error envelope.
+    // Normalize it so callers can always clear their pending state.
+    return networkError()
+  }
 }

@@ -10,12 +10,17 @@ import {
 } from '@/lib/api'
 import OwnerDashboardPage from './owner-dashboard-page'
 
-vi.mock('@/lib/api', () => ({
-  listMeetingTypes: vi.fn(),
-  createMeetingType: vi.fn(),
-  listUpcomingBookings: vi.fn(),
-  deleteBooking: vi.fn(),
-}))
+vi.mock('@/lib/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api')>()
+
+  return {
+    ...actual,
+    listMeetingTypes: vi.fn(),
+    createMeetingType: vi.fn(),
+    listUpcomingBookings: vi.fn(),
+    deleteBooking: vi.fn(),
+  }
+})
 
 const mockedListMeetingTypes = vi.mocked(listMeetingTypes)
 const mockedCreateMeetingType = vi.mocked(createMeetingType)
@@ -439,6 +444,31 @@ describe('OwnerDashboardPage', () => {
       const alert = await screen.findByRole('alert')
       expect(alert).toHaveTextContent("Couldn't delete booking.")
       expect(within(list).getByText('Ada Lovelace')).toBeInTheDocument()
+
+      fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }))
+
+      await waitFor(() =>
+        expect(
+          within(list).queryByText('Ada Lovelace'),
+        ).not.toBeInTheDocument(),
+      )
+      expect(mockedDeleteBooking).toHaveBeenLastCalledWith(earlierBooking.id)
+    })
+
+    it('clears the pending state and offers retry when the SDK call rejects', async () => {
+      mockedDeleteBooking
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockResolvedValueOnce(null)
+      const list = await renderWithBookings()
+
+      fireEvent.click(firstDeleteButton(list))
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent("Couldn't delete booking.")
+      expect(alert).toHaveTextContent('Something went wrong. Please try again.')
+      expect(within(list).getByText('Ada Lovelace')).toBeInTheDocument()
+      expect(screen.queryByText('Deleting...')).not.toBeInTheDocument()
 
       fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }))
 

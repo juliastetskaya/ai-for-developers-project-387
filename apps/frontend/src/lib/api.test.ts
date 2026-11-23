@@ -81,4 +81,20 @@ describe('deleteBooking', () => {
       details: undefined,
     })
   })
+
+  it('returns a network error when the request rejects', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn<typeof fetch>()
+        .mockRejectedValue(new TypeError('Failed to fetch')),
+    )
+
+    await expect(deleteBooking(42)).resolves.toEqual({
+      status: 0,
+      code: 'network_error',
+      message: 'Failed to fetch',
+      details: undefined,
+    })
+  })
 })
