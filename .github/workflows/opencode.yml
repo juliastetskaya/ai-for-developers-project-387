@@ -1,6 +1,6 @@
 name: opencode
 
-# The run name carries the issue/PR number. The attempt budget in the gate step
+# The run name carries the issue/PR number. The attempt budget in the gate job
 # attributes runs to a pull request by matching this exact tag, because
 # issue_comment runs do not expose the pull request in the Actions API.
 run-name: "opencode ref-${{ github.event.issue.number || github.event.pull_request.number }}"
@@ -18,52 +18,78 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  opencode:
+  # The gate runs in its own job, on a checkout of the default branch, and it is
+  # the only job that holds a write-scoped workflow token. A comment on a pull
+  # request (`pull_request_review_comment`) checks out the PR merge ref by
+  # default, so running the gate there would execute pull-request-controlled
+  # JavaScript while holding `pull-requests: write`. Here the script comes from
+  # the default branch, so a pull request cannot rewrite the budget check.
+  budget:
     if: |
       (contains(github.event.comment.body, '/oc') || contains(github.event.comment.body, '/opencode')) &&
       github.event.comment.user.type != 'Bot' &&
       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # The gate lists run history; the write scope posts one sticky notice.
+      actions: read
+      pull-requests: write
+    env:
+      # One constant: how many model attempts one pull request may spend.
+      OPENCODE_PR_ATTEMPT_BUDGET: "3"
+    outputs:
+      allowed: ${{ steps.gate.outputs.allowed }}
+      decision: ${{ steps.gate.outputs.decision }}
+    steps:
+      # Explicit default-branch ref: `pull_request_review_comment` would
+      # otherwise check out the PR merge ref and run untrusted code here.
+      - name: Check out the default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Check the attempt budget
+        id: gate
+        timeout-minutes: 5
+        env:
+          # Step-scoped: nothing after this step inherits the workflow token.
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/opencode-budget.mjs check
+
+  opencode:
+    needs: budget
+    if: needs.budget.outputs.allowed == 'true'
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
       contents: read
+      # The agent's write access comes from the OpenCode GitHub App over OIDC.
+      # This job has no write-scoped workflow token at all.
       id-token: write
-      actions: read
-      # The gate step posts one sticky notice with the workflow token. The token
-      # stays in that step; the OpenCode step below never receives it and keeps
-      # using the OpenCode App token over OIDC.
-      pull-requests: write
     env:
       VERSION: 1.19.6
       SHARE: "false"
-      # One constant: how many model attempts one pull request may spend.
-      OPENCODE_PR_ATTEMPT_BUDGET: "3"
       # Headless runs cannot answer permission prompts: an `ask` for a path outside
       # the checkout (e.g. `/tmp/...`) blocks the session until the job times out.
       # Deny upfront so the agent gets a tool error and keeps working in the repo.
       OPENCODE_PERMISSION: '{"external_directory":"deny"}'
     steps:
-      # The workflow file and this checkout come from the default branch. The
-      # gate below reads the event payload and the Actions API only; the model
-      # step starts only when the gate returns allowed=true.
+      # The agent works on the pull request content: this checkout is the merge
+      # ref for review comments and the default branch for issue comments. It
+      # only becomes reachable after the gate job returned allowed=true.
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Check the attempt budget
-        id: budget
-        timeout-minutes: 5
-        env:
-          # Step-scoped: the OpenCode step must not inherit a workflow token.
-          GH_TOKEN: ${{ github.token }}
-        run: node scripts/opencode-budget.mjs check
-
       # Fail early with a clear message when the secret is missing instead of
       # letting the agent start and fail later. The secret stays in this step.
       - name: Check the model key
-        if: steps.budget.outputs.allowed == 'true'
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
         run: |
@@ -73,7 +99,6 @@ jobs:
           fi
 
       - name: Run OpenCode
-        if: steps.budget.outputs.allowed == 'true'
         uses: anomalyco/opencode/github@f4e363c8295fa90a03dddc451882fffe8fbce357 # v1.19.6
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}

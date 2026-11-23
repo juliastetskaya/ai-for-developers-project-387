@@ -20,6 +20,18 @@ function miseTask(name) {
   return lines.slice(start + 1, end).join('\n');
 }
 
+function workflowJob(workflow, name) {
+  const lines = workflow.split('\n');
+  const start = lines.findIndex((line) => line === `  ${name}:`);
+  assert.notEqual(start, -1, `the workflow must define a "${name}" job`);
+
+  let end = lines.findIndex(
+    (line, index) => index > start && /^ {2}[a-z][\w-]*:$/.test(line),
+  );
+  if (end === -1) end = lines.length;
+  return lines.slice(start, end).join('\n');
+}
+
 function miseDepends(task) {
   const section = miseTask(task);
   const match = section.match(/depends\s*=\s*\[([^\]]*)\]/s);
@@ -137,10 +149,23 @@ test('the comment-driven opencode workflow is pinned, time-limited and serialize
     'runs on one task must share a concurrency group',
   );
   assert.match(workflow, /cancel-in-progress:\s*false/);
+
+  const budgetJob = workflowJob(workflow, 'budget');
+  const opencodeJob = workflowJob(workflow, 'opencode');
   assert.match(
-    workflow,
-    /permissions:\n\s+contents: read\n\s+id-token: write\n\s+actions: read\n(?:\s+#[^\n]*\n)*\s+pull-requests: write/,
-    'the gate needs run history and one comment; the model stays on the App token',
+    budgetJob,
+    /permissions:\n\s+contents: read\n(?:\s+#[^\n]*\n)*\s+actions: read\n(?:\s+#[^\n]*\n)*\s+pull-requests: write/,
+    'the gate needs run history and one comment',
+  );
+  assert.match(
+    opencodeJob,
+    /permissions:\n\s+contents: read\n(?:\s+#[^\n]*\n)*\s+id-token: write/,
+    'the model job reads code and mints the App token over OIDC',
+  );
+  assert.doesNotMatch(
+    opencodeJob,
+    /(contents|issues|actions|pull-requests):\s*write/,
+    'the model job must not hold a write-scoped workflow token',
   );
   assert.doesNotMatch(workflow, /contents:\s*write/);
   assert.doesNotMatch(
@@ -197,17 +222,19 @@ test('the opencode attempt budget is checked before the model and derived from t
   );
   assert.match(workflow, /OPENCODE_PR_ATTEMPT_BUDGET:\s*["']\d+["']/);
 
-  const gate = workflow.indexOf('- name: Check the attempt budget');
-  const keyCheck = workflow.indexOf('- name: Check the model key');
-  const model = workflow.indexOf('- name: Run OpenCode');
+  const budgetJob = workflowJob(workflow, 'budget');
+  const opencodeJob = workflowJob(workflow, 'opencode');
+
+  const gate = budgetJob.indexOf('- name: Check the attempt budget');
+  const keyCheck = opencodeJob.indexOf('- name: Check the model key');
+  const model = opencodeJob.indexOf('- name: Run OpenCode');
   assert.notEqual(gate, -1, 'opencode.yml must have a budget gate step');
   assert.notEqual(keyCheck, -1, 'opencode.yml must have a model-key check step');
   assert.notEqual(model, -1, 'opencode.yml must still run the model');
-  assert.ok(gate < keyCheck, 'the model-key check must run after the budget gate');
   assert.ok(keyCheck < model, 'the model-key check must run before the model');
 
-  const gateStep = workflow.slice(gate, keyCheck);
-  assert.match(gateStep, /id:\s*budget/);
+  const gateStep = budgetJob.slice(gate);
+  assert.match(gateStep, /id:\s*gate/);
   assert.match(gateStep, /run:\s*node scripts\/opencode-budget\.mjs check/);
   assert.match(gateStep, /GH_TOKEN:\s*\$\{\{\s*github\.token\s*\}\}/);
   assert.doesNotMatch(
@@ -221,12 +248,31 @@ test('the opencode attempt budget is checked before the model and derived from t
     'a failed gate must fail the job and block the model',
   );
 
-  const modelStep = workflow.slice(model);
   assert.match(
-    modelStep,
-    /if:\s*steps\.budget\.outputs\.allowed == 'true'/,
-    'the model must only run when the gate allows it',
+    budgetJob,
+    /ref:\s*\$\{\{\s*github\.event\.repository\.default_branch\s*\}\}/,
+    'the write-scoped gate must run the script from the default branch, not from the PR merge ref',
   );
+  assert.doesNotMatch(
+    budgetJob,
+    /uses:\s*anomalyco\/opencode\/github@/,
+    'the model must not share a job with the write-scoped workflow token',
+  );
+  assert.doesNotMatch(
+    opencodeJob,
+    /opencode-budget\.mjs/,
+    'the gate script must not run in the job that checks out the pull request',
+  );
+  assert.match(budgetJob, /outputs:\n\s+allowed:/, 'the gate must publish its decision');
+
+  assert.match(opencodeJob, /needs:\s*budget/, 'the model job waits for the gate job');
+  assert.match(
+    opencodeJob,
+    /if:\s*needs\.budget\.outputs\.allowed == 'true'/,
+    'the model job must only run when the gate allows it',
+  );
+
+  const modelStep = opencodeJob.slice(model);
   assert.doesNotMatch(
     modelStep,
     /(GH_TOKEN|GITHUB_TOKEN):|github\.token|secrets\.GITHUB_TOKEN/,
@@ -285,12 +331,17 @@ test('the budget script, its unit tests and the docs are wired into the reposito
 
 test('the model key is checked before the agent', () => {
   const workflow = read('.github/workflows/opencode.yml');
-  const keyCheck = workflow.indexOf('- name: Check the model key');
-  const model = workflow.indexOf('- name: Run OpenCode');
+  const opencodeJob = workflowJob(workflow, 'opencode');
+  const keyCheck = opencodeJob.indexOf('- name: Check the model key');
+  const model = opencodeJob.indexOf('- name: Run OpenCode');
   assert.ok(keyCheck !== -1 && keyCheck < model);
+  assert.match(
+    opencodeJob,
+    /if:\s*needs\.budget\.outputs\.allowed == 'true'/,
+    'the whole model job is gated on the budget job',
+  );
 
-  const keyStep = workflow.slice(keyCheck, model);
-  assert.match(keyStep, /if:\s*steps\.budget\.outputs\.allowed == 'true'/);
+  const keyStep = opencodeJob.slice(keyCheck, model);
   assert.match(
     keyStep,
     /OPENCODE_API_KEY:\s*\$\{\{\s*secrets\.OPENCODE_API_KEY\s*\}\}/,

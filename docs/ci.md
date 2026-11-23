@@ -61,14 +61,24 @@ pull request. It is not part of the PR gate; a run only ever starts from a comme
 - **Who can trigger it:** `issue_comment` and `pull_request_review_comment` (`created`)
   only, and only with `author_association` `OWNER`, `MEMBER` or `COLLABORATOR`; comments
   from `Bot` users are ignored explicitly. The repository is public and every run spends
-  credits on the API key. The workflow definition is taken from `main`, not from the pull
-  request, so a fork cannot alter it or start a run — only a trusted commenter can, and the
-  secret is never exposed to a fork's own workflow.
-- **Permissions:** `contents: read`, `id-token: write`, `actions: read` and
-  `pull-requests: write`. The extra read scope lets the gate list workflow runs; the write
-  scope is used only by the gate step to post one sticky budget notice. The OpenCode step
-  never receives the workflow token (no `GITHUB_TOKEN`/`GH_TOKEN` in its environment), and
-  write access for the agent still comes from the OpenCode GitHub App over OIDC.
+  credits on the API key. For `pull_request_review_comment` GitHub takes the workflow
+  definition from the base branch and the run only starts from a trusted comment, so a fork
+  cannot alter the workflow or start a run, and the secret is never exposed to a fork's own
+  workflow.
+- **Two jobs, two permission sets:** `budget` and `opencode`; the second one runs only when
+  `needs.budget.outputs.allowed == 'true'`.
+  - `budget` is the only job with a write-scoped workflow token (`contents: read`,
+    `actions: read`, `pull-requests: write`). It checks out the **default branch**
+    explicitly (`ref: github.event.repository.default_branch`), because
+    `pull_request_review_comment` would otherwise check out the pull request merge ref and
+    run pull-request-controlled JavaScript — `scripts/opencode-budget.mjs` included — while
+    holding a token that can write pull request comments. `contents: read` covers that
+    checkout, `actions: read` lets it list workflow runs, and the write scope posts one
+    sticky budget notice.
+  - `opencode` checks out the pull request content and holds `contents: read` +
+    `id-token: write` only. It has no write scope and the agent never receives the workflow
+    token (no `GITHUB_TOKEN`/`GH_TOKEN` in its environment); write access still comes from
+    the OpenCode GitHub App over OIDC.
 - **Sharing:** sessions are not published — `SHARE: 'false'`. The action's deprecated
   `share` input is ignored by the pinned version, so the decision is expressed as an
   environment variable.
@@ -101,8 +111,9 @@ separate ledger, database, artifact or workflow.
   `run_attempt`; the current run is excluded and `run_attempt - 1` is added, so a re-run
   is counted too. A completed run counts even when it was cancelled, timed out or failed.
   A run that is still queued is not counted yet; it counts when it starts.
-- **Decision:** `used < budget` allows the run. The gate runs before the OpenCode step and
-  writes `allowed`; the model step only runs when `steps.budget.outputs.allowed == 'true'`.
+- **Decision:** `used < budget` allows the run. The gate runs in the `budget` job before the
+  model job and writes `allowed`; the `opencode` job only runs when
+  `needs.budget.outputs.allowed == 'true'`.
   Any error while reading the API, resolving the pull request or parsing the budget is a
   `budget_check_error`: the job fails and the model is not called. If the current run is
   already visible in the history and its `display_title` does not match the expected tag,
@@ -125,7 +136,8 @@ separate ledger, database, artifact or workflow.
   `pull_requests: write`. **There is no `Actions: write`**, so the agent cannot delete,
   cancel or re-run workflow runs with the App token; the run history is the authoritative
   record. Re-check this after App permission changes. The workflow token's
-  `pull-requests: write` is passed only to the gate step and is not given to the model.
+  `pull-requests: write` exists only in the `budget` job, which runs the default-branch
+  script; the `opencode` job has no write scope and never receives that token.
 
 Limitations of this simplified approach:
 
