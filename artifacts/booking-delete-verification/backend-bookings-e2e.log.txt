@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/runner/work/ai-for-developers-project-387/ai-for-developers-project-387/apps/backend
+
+
+ Test Files  1 passed (1)
+      Tests  29 passed (29)
+   Start at  16:57:08
+   Duration  1.24s (transform 195ms, setup 0ms, import 682ms, tests 385ms, environment 0ms)
+

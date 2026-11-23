@@ -1,0 +1,52 @@
+[WebServer] 
+[WebServer] > backend@1.3.1 start /home/runner/work/ai-for-developers-project-387/ai-for-developers-project-387/apps/backend
+[WebServer] > nest start
+[WebServer] 
+[WebServer] [Nest] 9719  - 11/23/2026, 4:57:09 PM     LOG [NestFactory] Starting Nest application...
+[WebServer] [Nest] 9719  - 11/23/2026, 4:57:09 PM     LOG [DatabaseService] SQLite ready at /tmp/call-calendar-playwright/e2e.db
+[WebServer] [Nest] 9719  - 11/23/2026, 4:57:09 PM     LOG [InstanceLoader] AppModule dependencies initialized +2ms
+[WebServer] [Nest] 9719  - 11/23/2026, 4:57:09 PM     LOG [InstanceLoader] DatabaseModule dependencies initialized +0ms
+[WebServer] [Nest] 9719  - 11/23/2026, 4:57:09 PM     LOG [InstanceLoader] HealthModule dependencies initialized +0ms
+[WebServer] [Nest] 9719  - 11/23/2026, 4:57:09 PM     LOG [InstanceLoader] MeetingTypesModule dependencies initialized +1ms
+[WebServer] [Nest] 9719  - 11/23/2026, 4:57:09 PM     LOG [InstanceLoader] AvailabilityModule dependencies initialized +0ms
+[WebServer] [Nest] 9719  - 11/23/2026, 4:57:09 PM     LOG [InstanceLoader] BookingsModule dependencies initialized +0ms
+[WebServer] [Nest] 9719  - 11/23/2026, 4:57:09 PM     LOG [StaticFrontend] Serving the SPA from /home/runner/work/ai-for-developers-project-387/ai-for-developers-project-387/apps/frontend/dist/
+[WebServer] [Nest] 9719  - 11/23/2026, 4:57:09 PM     LOG [RoutesResolver] HealthController {/health}: +3ms
+[WebServer] [Nest] 9719  - 11/23/2026, 4:57:09 PM     LOG [RouterExplorer] Mapped {/health, GET} route +3ms
+[WebServer] [Nest] 9719  - 11/23/2026, 4:57:09 PM     LOG [RoutesResolver] MeetingTypesController {/meeting-types}: +0ms
+[WebServer] [Nest] 9719  - 11/23/2026, 4:57:09 PM     LOG [RouterExplorer] Mapped {/meeting-types, GET} route +0ms
+[WebServer] [Nest] 9719  - 11/23/2026, 4:57:09 PM     LOG [RouterExplorer] Mapped {/meeting-types, POST} route +1ms
+[WebServer] [Nest] 9719  - 11/23/2026, 4:57:09 PM     LOG [RoutesResolver] AvailabilityController {/availability}: +0ms
+[WebServer] [Nest] 9719  - 11/23/2026, 4:57:09 PM     LOG [RouterExplorer] Mapped {/availability, GET} route +0ms
+[WebServer] [Nest] 9719  - 11/23/2026, 4:57:09 PM     LOG [RoutesResolver] BookingsController {/bookings}: +1ms
+[WebServer] [Nest] 9719  - 11/23/2026, 4:57:09 PM     LOG [RouterExplorer] Mapped {/bookings, GET} route +0ms
+[WebServer] [Nest] 9719  - 11/23/2026, 4:57:09 PM     LOG [RouterExplorer] Mapped {/bookings, POST} route +0ms
+[WebServer] [Nest] 9719  - 11/23/2026, 4:57:09 PM     LOG [RouterExplorer] Mapped {/bookings/:id, DELETE} route +1ms
+[WebServer] [Nest] 9719  - 11/23/2026, 4:57:09 PM     LOG [NestApplication] Nest application successfully started +1ms
+[WebServer] 
+[WebServer] > frontend@1.3.1 dev /home/runner/work/ai-for-developers-project-387/ai-for-developers-project-387/apps/frontend
+[WebServer] > vite --port 5273 --strictPort
+[WebServer] 
+[WebServer] 
+[WebServer]   VITE v8.3.5  ready in 288 ms
+[WebServer] 
+[WebServer]   ➜  Local:   http://localhost:5273/
+[WebServer]   ➜  Network: use --host to expose
+
+Running 1 test using 1 worker
+
+[WebServer] 4:57:12 PM [vite] (client) [console.error] Base UI: A component that acts as a button expected a native <button> because the `nativeButton` prop is true. Rendering a non-<button> removes native button semantics, which can impact forms and accessibility. Use a real <button> in the `render` prop, or set `nativeButton` to `false`.
+[WebServer]     at Button (http://localhost:5273/src/components/ui/button.tsx:33:25)
+[WebServer]     at Layout (http://localhost:5273/src/components/layout.tsx:25:49)
+[WebServer]     at App (http://localhost:5273/src/App.tsx:10:28)
+[WebServer] 4:57:12 PM [vite] (client) [console.error] Base UI: A component that acts as a button expected a native <button> because the `nativeButton` prop is true. Rendering a non-<button> removes native button semantics, which can impact forms and accessibility. Use a real <button> in the `render` prop, or set `nativeButton` to `false`.
+[WebServer]     at Button (http://localhost:5273/src/components/ui/button.tsx:33:25)
+[WebServer]     at LandingPage (http://localhost:5273/src/pages/landing-page.tsx:40:21)
+[WebServer]     at App (http://localhost:5273/src/App.tsx:18:30)
+[WebServer] 4:57:12 PM [vite] (client) [console.error] Base UI: A component that acts as a button expected a native <button> because the `nativeButton` prop is true. Rendering a non-<button> removes native button semantics, which can impact forms and accessibility. Use a real <button> in the `render` prop, or set `nativeButton` to `false`.
+[WebServer]     at Button (http://localhost:5273/src/components/ui/button.tsx:33:25)
+[WebServer]     at LandingPage (http://localhost:5273/src/pages/landing-page.tsx:122:30)
+[WebServer]     at App (http://localhost:5273/src/App.tsx:18:30)
+  ✓  1 [chromium] › e2e/golden-path.spec.ts:27:1 › guest books a free slot and sees the confirmation (1.2s)
+
+  1 passed (6.7s)
