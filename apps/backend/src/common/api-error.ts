@@ -70,6 +70,10 @@ export function meetingTypeNotFound(meetingTypeId: number): ApiError {
   );
 }
 
+export function notFound(message = 'Booking not found'): ApiError {
+  return new ApiError(404, ERROR_CODES.NOT_FOUND, message);
+}
+
 export function dateOutOfRange(
   date: string,
   earliestDate: string,

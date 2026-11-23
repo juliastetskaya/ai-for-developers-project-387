@@ -51,7 +51,7 @@ apps/backend/                 NestJS API and serving of the built SPA
     ├── slots/                pure logic for Working Window, horizon and Slot slicing
     ├── meeting-types/        controller → service → repository
     ├── availability/         free Slots for a single day
-    ├── bookings/             Booking creation and listing
+    ├── bookings/             Booking creation, listing and deletion
     └── health/               GET /health
 
 apps/frontend/                React SPA
@@ -186,6 +186,7 @@ suitable server-code generator) and kept in sync with the contract by API e2e te
 | `GET /availability?meetingTypeId&date` | free Slots for a day (date in the owner's timezone) |
 | `GET /bookings?scope=upcoming` | upcoming Bookings with the nested Meeting Type |
 | `POST /bookings` | create a Booking; overlap → 409 |
+| `DELETE /bookings/{id}` | hard-delete a Booking; frees its interval → 204, unknown id → 404 |
 
 ## Frontend
 
@@ -243,7 +244,8 @@ in a temporary directory and does not depend on dev data. It is part of `mise ru
 
 - No authentication, accounts or roles: the Owner Dashboard is open to anyone who knows the
   address.
-- No cancellation or rescheduling of Bookings, no notifications and no external calendar sync.
+- No rescheduling; the Calendar Owner can delete an upcoming Booking. There are
+  no notifications and no external calendar sync.
 - The timezone is not selectable: it is fixed for the owner (`Europe/Moscow`).
 - Data on free Render is ephemeral: the container is recreated and the database is empty.
 - The app is designed for a single instance: one SQLite file and one process; there is no

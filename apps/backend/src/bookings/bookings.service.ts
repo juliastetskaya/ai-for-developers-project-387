@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import {
   meetingTypeNotFound,
+  notFound,
   validationFailed,
 } from '../common/api-error.js';
 import {
@@ -188,6 +189,21 @@ export class BookingsService {
     parseListBookingsQuery(query);
 
     return this.repository.listUpcoming(now.toISOString());
+  }
+
+  /**
+   * Deletes a booking by its raw path segment. Any id that is not an existing
+   * booking, including a non-integer segment, is reported as `not_found`.
+   */
+  delete(rawId: string): void {
+    if (!/^\d+$/.test(rawId)) {
+      throw notFound();
+    }
+
+    const id = Number(rawId);
+    if (!Number.isSafeInteger(id) || !this.repository.deleteById(id)) {
+      throw notFound();
+    }
   }
 
   create(body: unknown, now: Date = new Date()): Booking {

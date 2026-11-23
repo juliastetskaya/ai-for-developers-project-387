@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { Booking, MeetingType } from 'api-client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createMeetingType,
+  deleteBooking,
   listMeetingTypes,
   listUpcomingBookings,
   type ApiResult,
@@ -13,11 +14,13 @@ vi.mock('@/lib/api', () => ({
   listMeetingTypes: vi.fn(),
   createMeetingType: vi.fn(),
   listUpcomingBookings: vi.fn(),
+  deleteBooking: vi.fn(),
 }))
 
 const mockedListMeetingTypes = vi.mocked(listMeetingTypes)
 const mockedCreateMeetingType = vi.mocked(createMeetingType)
 const mockedListUpcomingBookings = vi.mocked(listUpcomingBookings)
+const mockedDeleteBooking = vi.mocked(deleteBooking)
 
 const existingType: MeetingType = {
   id: 1,
@@ -349,5 +352,113 @@ describe('OwnerDashboardPage', () => {
     expect(
       await screen.findByRole('heading', { name: 'Intro call' }),
     ).toBeInTheDocument()
+  })
+
+  describe('deleting a booking', () => {
+    async function renderWithBookings() {
+      mockedListMeetingTypes.mockResolvedValue(resolvedMeetingTypes([]))
+      mockedListUpcomingBookings.mockResolvedValue(
+        resolvedBookings([earlierBooking, laterBooking]),
+      )
+
+      render(<OwnerDashboardPage />)
+
+      return screen.findByRole('list', { name: 'Upcoming bookings' })
+    }
+
+    function firstDeleteButton(list: HTMLElement) {
+      return within(list).getAllByRole('button', { name: 'Delete booking' })[0]
+    }
+
+    it('renders a delete control for each upcoming booking', async () => {
+      const list = await renderWithBookings()
+
+      expect(
+        within(list).getAllByRole('button', { name: 'Delete booking' }),
+      ).toHaveLength(2)
+    })
+
+    it('asks for confirmation before deleting', async () => {
+      const list = await renderWithBookings()
+
+      fireEvent.click(firstDeleteButton(list))
+
+      expect(screen.getByText('Delete this booking?')).toBeInTheDocument()
+      expect(mockedDeleteBooking).not.toHaveBeenCalled()
+    })
+
+    it('removes the row on 204 without refetching', async () => {
+      mockedDeleteBooking.mockResolvedValue(null)
+      const list = await renderWithBookings()
+
+      fireEvent.click(firstDeleteButton(list))
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+
+      await waitFor(() =>
+        expect(
+          within(list).queryByText('Ada Lovelace'),
+        ).not.toBeInTheDocument(),
+      )
+      expect(mockedDeleteBooking).toHaveBeenCalledWith(earlierBooking.id)
+      expect(mockedListUpcomingBookings).toHaveBeenCalledTimes(1)
+      expect(within(list).getByText('Grace Hopper')).toBeInTheDocument()
+    })
+
+    it('removes the row silently when the booking is already gone (404)', async () => {
+      mockedDeleteBooking.mockResolvedValue({
+        status: 404,
+        code: 'not_found',
+        message: 'Booking not found',
+      })
+      const list = await renderWithBookings()
+
+      fireEvent.click(firstDeleteButton(list))
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+
+      await waitFor(() =>
+        expect(
+          within(list).queryByText('Ada Lovelace'),
+        ).not.toBeInTheDocument(),
+      )
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('keeps the row and shows an inline error with retry on other failures', async () => {
+      mockedDeleteBooking
+        .mockResolvedValueOnce({
+          status: 500,
+          code: 'internal_error',
+          message: 'Internal server error',
+        })
+        .mockResolvedValueOnce(null)
+      const list = await renderWithBookings()
+
+      fireEvent.click(firstDeleteButton(list))
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent("Couldn't delete booking.")
+      expect(within(list).getByText('Ada Lovelace')).toBeInTheDocument()
+
+      fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }))
+
+      await waitFor(() =>
+        expect(
+          within(list).queryByText('Ada Lovelace'),
+        ).not.toBeInTheDocument(),
+      )
+      expect(mockedDeleteBooking).toHaveBeenLastCalledWith(earlierBooking.id)
+    })
+
+    it('leaves the booking intact when the confirmation is cancelled', async () => {
+      const list = await renderWithBookings()
+
+      fireEvent.click(firstDeleteButton(list))
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+      expect(within(list).getByText('Ada Lovelace')).toBeInTheDocument()
+      expect(screen.queryByText('Delete this booking?')).not.toBeInTheDocument()
+      expect(mockedDeleteBooking).not.toHaveBeenCalled()
+    })
   })
 })

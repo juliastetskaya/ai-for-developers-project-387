@@ -4,6 +4,7 @@ import { AsyncSection } from '@/components/async-section'
 import { Button } from '@/components/ui/button'
 import {
   createMeetingType,
+  deleteBooking,
   listMeetingTypes,
   listUpcomingBookings,
   type ApiError,
@@ -37,6 +38,11 @@ function OwnerDashboardPage() {
   const [bookings, setBookings] = useState<Booking[]>([])
   const [bookingsStatus, setBookingsStatus] = useState<LoadStatus>('loading')
   const [bookingsError, setBookingsError] = useState<ApiError | null>(null)
+
+  const [confirmingId, setConfirmingId] = useState<number | null>(null)
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [failedDeleteId, setFailedDeleteId] = useState<number | null>(null)
 
   const [form, setForm] = useState<CreateFormState>(emptyForm)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
@@ -83,6 +89,31 @@ function OwnerDashboardPage() {
     setBookingsStatus('loading')
     setBookingsError(null)
     void listUpcomingBookings().then(handleBookingsResult)
+  }
+
+  async function handleDelete(id: number) {
+    setDeletingId(id)
+    setDeleteError(null)
+
+    const error = await deleteBooking(id)
+
+    setDeletingId(null)
+    setConfirmingId(null)
+
+    if (error && error.code !== 'not_found') {
+      setDeleteError(error.message)
+      setFailedDeleteId(id)
+      return
+    }
+
+    setBookings((current) => current.filter((booking) => booking.id !== id))
+    setFailedDeleteId(null)
+  }
+
+  function retryDelete() {
+    if (failedDeleteId !== null) {
+      void handleDelete(failedDeleteId)
+    }
   }
 
   function updateField(field: keyof CreateFormState, value: string) {
@@ -337,11 +368,62 @@ function OwnerDashboardPage() {
                   >
                     {booking.guestEmail}
                   </a>
+                  {confirmingId === booking.id ? (
+                    <div className="mt-2 flex flex-col gap-2">
+                      <p className="text-sm">Delete this booking?</p>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          disabled={deletingId === booking.id}
+                          onClick={() => void handleDelete(booking.id)}
+                        >
+                          {deletingId === booking.id ? 'Deleting...' : 'Confirm'}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={deletingId === booking.id}
+                          onClick={() => setConfirmingId(null)}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          setDeleteError(null)
+                          setFailedDeleteId(null)
+                          setConfirmingId(booking.id)
+                        }}
+                      >
+                        Delete booking
+                      </Button>
+                    </div>
+                  )}
                 </article>
               </li>
             ))}
           </ul>
         </AsyncSection>
+
+        {deleteError && (
+          <div
+            role="alert"
+            className="flex flex-col items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4"
+          >
+            <p>Couldn't delete booking. {deleteError}</p>
+            {failedDeleteId !== null && (
+              <Button type="button" variant="outline" onClick={retryDelete}>
+                Retry
+              </Button>
+            )}
+          </div>
+        )}
       </section>
     </section>
   )

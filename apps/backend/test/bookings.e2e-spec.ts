@@ -523,4 +523,81 @@ describe('Bookings (e2e)', () => {
       expect(response.body).toEqual([]);
     });
   });
+
+  describe('DELETE /bookings/:id', () => {
+    function deleteBooking(id: string | number) {
+      return request(app.getHttpServer()).delete(`/bookings/${id}`);
+    }
+
+    async function createBooking(): Promise<number> {
+      const response = await postBooking(validPayload()).expect(201);
+      return (response.body as BookingBody).id;
+    }
+
+    it('deletes an existing booking and returns 204 with an empty body', async () => {
+      const id = await createBooking();
+
+      const response = await deleteBooking(id).expect(204);
+
+      expect(response.body).toEqual({});
+      expect(
+        database.db.prepare('SELECT COUNT(*) AS count FROM "Booking"').get(),
+      ).toEqual({ count: 0 });
+    });
+
+    it('returns 404 not_found when the booking was already deleted', async () => {
+      const id = await createBooking();
+      await deleteBooking(id).expect(204);
+
+      const response = await deleteBooking(id).expect(404);
+
+      expect(response.body).toEqual({
+        statusCode: 404,
+        code: 'not_found',
+        message: 'Booking not found',
+      });
+    });
+
+    it('returns 404 not_found for an unknown id', async () => {
+      const response = await deleteBooking(999_999).expect(404);
+
+      expect(response.body).toMatchObject({
+        statusCode: 404,
+        code: 'not_found',
+      });
+    });
+
+    it('returns 404 not_found for a non-integer id', async () => {
+      const response = await deleteBooking('abc').expect(404);
+
+      expect(response.body).toMatchObject({
+        statusCode: 404,
+        code: 'not_found',
+      });
+    });
+
+    it('makes the freed slot available and bookable again after deletion', async () => {
+      const id = await createBooking();
+
+      const before = await request(app.getHttpServer())
+        .get('/availability')
+        .query({ meetingTypeId: thirtyMinuteTypeId, date: tomorrow })
+        .expect(200);
+      expect(
+        (before.body as SlotBody[]).map((slot) => slot.startAt),
+      ).not.toContain(ownerTimeIso(tomorrow, 9));
+
+      await deleteBooking(id).expect(204);
+
+      const after = await request(app.getHttpServer())
+        .get('/availability')
+        .query({ meetingTypeId: thirtyMinuteTypeId, date: tomorrow })
+        .expect(200);
+      expect((after.body as SlotBody[]).map((slot) => slot.startAt)).toContain(
+        ownerTimeIso(tomorrow, 9),
+      );
+
+      await postBooking(validPayload()).expect(201);
+    });
+  });
 });

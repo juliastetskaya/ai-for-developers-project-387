@@ -252,6 +252,20 @@ model ListBookingsInternalError {
   @body body: InternalError;
 }
 
+model DeleteBookingNoContent {
+  @statusCode statusCode: 204;
+}
+
+model DeleteBookingNotFound {
+  @statusCode statusCode: 404;
+  @body body: NotFoundError;
+}
+
+model DeleteBookingInternalError {
+  @statusCode statusCode: 500;
+  @body body: InternalError;
+}
+
 @route("/bookings")
 namespace Bookings {
   /**
@@ -274,6 +288,16 @@ namespace Bookings {
     | CreateBookingMeetingTypeNotFound
     | CreateBookingSlotUnavailable
     | CreateBookingInternalError;
+
+  /**
+   * Permanently delete a booking by id. The interval it occupied becomes
+   * bookable again immediately. Any id that is not an existing booking,
+   * including a non-integer segment, returns 404 not_found.
+   */
+  @delete
+  op delete(
+    @path id: int32,
+  ): DeleteBookingNoContent | DeleteBookingNotFound | DeleteBookingInternalError;
 }
 
 // ---------------------------------------------------------------------------

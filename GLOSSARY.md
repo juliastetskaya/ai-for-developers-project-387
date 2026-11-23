@@ -19,7 +19,7 @@ A bookable kind of meeting defined by the Calendar Owner: a name, an optional de
 _Avoid_: event type, meeting kind, appointment type
 
 **Booking**:
-A confirmed reservation of a concrete time interval, made by a Guest for a specific Meeting Type. Any time overlap with any Booking (of any Meeting Type) blocks that interval globally.
+A confirmed reservation of a concrete time interval, made by a Guest for a specific Meeting Type. Any time overlap with any Booking (of any Meeting Type) blocks that interval globally. The Calendar Owner can delete a Booking; doing so removes it permanently and its interval stops blocking immediately.
 _Avoid_: appointment, reservation, meeting
 
 **Working Window**:
@@ -41,5 +41,5 @@ The public page at `/book` where the Guest flow starts: picking a Meeting Type, 
 _Avoid_: public page, booking flow, main page
 
 **Owner Dashboard**:
-The management page where the Calendar Owner manages Meeting Types and sees all upcoming Bookings.
+The management page where the Calendar Owner manages Meeting Types and sees all upcoming Bookings, and can delete an upcoming Booking.
 _Avoid_: admin panel, home page, main page
