@@ -64,6 +64,14 @@ Do not bypass hooks (`--no-verify`) — CI re-runs the same checks.
   owner/member/collaborator (never a bot) gets one read-only OpenCode triage comment. Issues
   already labelled `ready-for-agent` are skipped, so `/to-spec` and `/to-tickets` output is
   never triaged again. Not part of the PR gate; see [`docs/ci.md`](docs/ci.md).
+- `.github/workflows/review.yml` — independent advisory AI review of eligible
+  same-repository PRs from trusted authors (plus `opencode-agent[bot]`; drafts and forks are
+  skipped). It runs OpenCode read-only, publishes one general comment with the reviewed
+  commit SHA and Actions run link, and updates that comment on later pushes. A short result
+  goes to the job summary. `REVIEW.md` and `AGENTS.md` criteria come from the base branch
+  only; a missing base file fails the review before the model runs. It never approves,
+  rejects, merges or edits a PR and is not a required check. Criteria and report format:
+  [`REVIEW.md`](REVIEW.md); setup and manual checks: [`docs/ci.md`](docs/ci.md).
 - `main` is protected: the `check` status is required (strict, admins enforced). The pipeline, local gates and the branch-protection commands are documented in [`docs/ci.md`](docs/ci.md). If a new workflow/job name replaces `check`, update the required status context.
 
 ## Deployment

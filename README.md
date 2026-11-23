@@ -86,13 +86,46 @@ Prerequisites: the App is installed on the repository and the `OPENCODE_API_KEY`
 (*Settings → Secrets and variables → Actions*). Setup and troubleshooting are in
 [docs/ci.md](docs/ci.md#comment-driven-agent-opencodeyml).
 
+## Independent AI review
+
+`.github/workflows/review.yml` reviews eligible pull requests independently and publishes
+one advisory comment with the reviewed commit SHA. It covers specification compliance,
+correctness, regressions, security, tests, repository conventions and relevant risks,
+following [`REVIEW.md`](REVIEW.md). The PR template asks for context, tests, risk and
+rollback information.
+
+- **When:** `pull_request` events `opened`, `synchronize`, `reopened`,
+  `ready_for_review` and `edited` (only when the PR body changes).
+- **What is reviewed:** same-repository PRs from `OWNER`, `MEMBER` or `COLLABORATOR`
+  authors, plus the repository's `opencode-agent[bot]`. Drafts and fork PRs are skipped; the
+  workflow never uses `pull_request_target`.
+- **What it may do:** read the checkout and existing PR/issue/CI context. Editing, shell
+  execution, network access, delegation and MCP servers are denied, and the OpenCode
+  process has no GitHub write token.
+- **What it writes:** one general PR comment with the reviewed commit SHA and a link to the
+  exact Actions run, updated in place on later pushes through the hidden
+  `<!-- ai-review-report -->` marker. A short result also goes to the job summary. It does
+  not create inline threads, approve, reject, merge or modify the PR, and it is **not** a
+  required check.
+- **Criteria:** `REVIEW.md` and `AGENTS.md` come from the base branch only; a missing base
+  file fails the review before any model call.
+- **Issue context:** closing references and issue links from the PR description are fetched;
+  inaccessible external references are marked explicitly.
+- **Model and CLI:** the pinned OpenCode V1 CLI `1.19.6` and
+  `opencode/deepseek-v4.1-flash` (`variant: low`), the same pair as the manual `/oc`
+  workflow. Review runs do not rerun the project's CI.
+
+Details and manual verification steps are in
+[docs/ci.md](docs/ci.md#independent-ai-pull-request-review-reviewyml).
+
 ## Documentation
 
 | Document | What it covers |
 | --- | --- |
 | [docs/architecture.md](docs/architecture.md) | layers, request flow, domain, data, testing |
 | [docs/deploy.md](docs/deploy.md) | Render, port, migrations, free-plan limits |
-| [docs/ci.md](docs/ci.md) | pipeline, `check` and `docker` jobs, branch protection |
+| [docs/ci.md](docs/ci.md) | pipeline, `check` and `docker` jobs, branch protection, AI review |
+| [REVIEW.md](REVIEW.md) | AI review criteria, severity levels and report format |
 | [docs/releases.md](docs/releases.md) | release-please, tags and CHANGELOG |
 | [docs/versioning.md](docs/versioning.md) | a single version across all packages |
 | [GLOSSARY.md](GLOSSARY.md) | domain language: Meeting Type, Booking, Slot, Working Window |

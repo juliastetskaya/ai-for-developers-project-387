@@ -258,3 +258,188 @@ test('release-please prefers a PAT and falls back to GITHUB_TOKEN', () => {
     /token:\s*\$\{\{\s*secrets\.RELEASE_PLEASE_TOKEN\s*\|\|\s*secrets\.GITHUB_TOKEN\s*\}\}/,
   );
 });
+
+test('independent AI review runs on eligible pull requests only', () => {
+  const workflow = read('.github/workflows/review.yml');
+
+  assert.match(workflow, /^name:\s*ai-review$/m);
+  assert.match(
+    workflow,
+    /^on:\n {2}pull_request:\n {4}types:\s*\[opened, synchronize, reopened, ready_for_review, edited\]$/m,
+  );
+  assert.doesNotMatch(workflow, /pull_request_target/);
+
+  assert.match(workflow, /github\.event\.pull_request\.draft\s*==\s*false/);
+  assert.match(
+    workflow,
+    /github\.event\.pull_request\.head\.repo\.full_name\s*==\s*github\.repository/,
+    'fork pull requests must be skipped before any secret is used',
+  );
+  assert.match(workflow, /github\.event\.pull_request\.author_association/, 'only trusted authors may spend the API key');
+  assert.match(workflow, /opencode-agent\[bot\]/, 'the repository agent bot is explicitly allowed');
+  assert.match(workflow, /github\.event\.action != 'edited'/, 'body edits must not trigger a needless rerun');
+
+  const uses = workflow.split('\n').filter((line) => /^\s*uses:/.test(line));
+  assert.ok(uses.length >= 3, 'review.yml must check out, hand off and publish the report');
+  for (const line of uses) {
+    assert.match(
+      line,
+      /@[0-9a-f]{40}\s+#\s*v?\d+\.\d+\.\d+/,
+      `every action must be pinned to a full commit SHA with its release in a comment: ${line.trim()}`,
+    );
+  }
+});
+
+test('independent AI review pins OpenCode CLI 1.19.6 and a read-only permission set', () => {
+  const workflow = read('.github/workflows/review.yml');
+
+  assert.match(workflow, /VERSION:\s*1\.19\.6/);
+  assert.match(workflow, /opencode\/bin\/opencode" --version \| grep -Fx "1\.19\.6"/);
+  assert.doesNotMatch(workflow, /v2\/install|@opencode\/cli|opencode\/github@/);
+  assert.match(workflow, /--model opencode\/deepseek-v4\.1-flash/);
+  assert.match(workflow, /--variant low/);
+
+  const permissionText = workflow.match(/OPENCODE_PERMISSION:\s*\|\n([\s\S]*?)\n\s{8}run:/)?.[1];
+  assert.ok(permissionText, 'review.yml must pass OPENCODE_PERMISSION as JSON');
+  const permission = JSON.parse(permissionText);
+
+  assert.equal(permission['*'], 'deny', 'never use permissive defaults');
+  for (const tool of [
+    'bash',
+    'edit',
+    'task',
+    'webfetch',
+    'websearch',
+    'skill',
+    'lsp',
+    'todowrite',
+    'question',
+    'external_directory',
+    'doom_loop',
+  ]) {
+    assert.equal(permission[tool], 'deny', `the reviewer must not use ${tool}`);
+  }
+  for (const tool of ['glob', 'grep', 'list']) {
+    assert.equal(permission[tool], 'allow', `the reviewer needs ${tool} for local analysis`);
+  }
+  assert.equal(permission.read['*'], 'allow');
+  assert.equal(permission.read['*.env'], 'deny');
+  assert.match(
+    workflow,
+    /OPENCODE_DISABLE_PROJECT_CONFIG:\s*['"]1['"]/,
+    'the repository MCP servers must not be loaded into the reviewer',
+  );
+  assert.match(
+    workflow,
+    /OPENCODE_DISABLE_CLAUDE_CODE:\s*['"]1['"]/,
+    'Claude instruction files and skills must not be loaded',
+  );
+  assert.match(
+    workflow,
+    /OPENCODE_PURE:\s*['"]1['"]/,
+    'external plugins must not be loaded into the reviewer',
+  );
+
+  const reviewStep = workflow.slice(
+    workflow.indexOf('- name: Run independent AI review'),
+    workflow.indexOf('- name: Upload the review report'),
+  );
+  assert.doesNotMatch(
+    reviewStep,
+    /^\s+(GH_TOKEN|GITHUB_TOKEN):|github\.token|secrets\.GITHUB_TOKEN/m,
+    'the OpenCode process must not receive a GitHub token',
+  );
+});
+
+test('independent AI review separates execution from idempotent comment publication', () => {
+  const workflow = read('.github/workflows/review.yml');
+  const [reviewJob, publishJob] = workflow.split(/\n {2}publish:\n/);
+  assert.ok(reviewJob && publishJob, 'review.yml must define separate review and publish jobs');
+
+  assert.match(reviewJob, /^permissions:\s*\{\}$/m);
+  assert.match(
+    reviewJob,
+    /permissions:\n\s+contents: read\n\s+issues: read\n\s+pull-requests: read\n\s+actions: read\n\s+checks: read\n\s+statuses: read/,
+  );
+  assert.doesNotMatch(reviewJob, /(contents|pull-requests|issues|actions|checks|statuses):\s*write/);
+
+  assert.match(publishJob, /needs:\s*review/);
+  assert.match(publishJob, /permissions:\n\s+pull-requests: write/);
+  assert.doesNotMatch(
+    publishJob,
+    /(contents|issues|checks):\s*write/,
+    'publication needs only the pull request comment permission',
+  );
+
+  assert.match(workflow, /uses: actions\/upload-artifact@/);
+  assert.match(workflow, /uses: actions\/download-artifact@/);
+  assert.match(workflow, /<!-- ai-review-report -->/);
+  assert.match(workflow, /GITHUB_STEP_SUMMARY/, 'the brief result must also be written to the step summary');
+  assert.match(workflow, /### Publication/, 'the publish job must summarise the comment publication');
+  assert.match(
+    workflow,
+    /actions\/runs\/\$\{\{\s*github\.run_id\s*\}\}/,
+    'the comment must link to the exact Actions run',
+  );
+  assert.match(
+    workflow,
+    /Reviewed commit \\?`%s\\?`\. \[Workflow run\]\(%s\)/,
+    'the published comment header must include the run link',
+  );
+  assert.match(workflow, /closingIssuesReferences/);
+  assert.match(workflow, /pr-description/, 'issue references from the PR description must be collected');
+  assert.match(workflow, /External issue/, 'external issue references must be marked explicitly');
+  assert.match(workflow, /Context unavailable/, 'unreadable external issues must be marked unavailable');
+  assert.match(workflow, /gh issue view/, 'available issue context must be fetched');
+  assert.match(workflow, /fail_review/, 'missing base criteria must fail before the model runs');
+  assert.match(workflow, /Required base-branch file REVIEW\.md/);
+  assert.match(workflow, /Required base-branch file AGENTS\.md/);
+  assert.doesNotMatch(
+    workflow,
+    /\|\|\s*cp (REVIEW|AGENTS)\.md/,
+    'REVIEW.md and AGENTS.md must never fall back to the PR head',
+  );
+  assert.match(workflow, /AGENTS\.md\|CLAUDE\.md\|CONTEXT\.md\|REVIEW\.md/, 'head criteria copies must be removed');
+  assert.match(workflow, /gh api --method PATCH .*issues\/comments/);
+  assert.match(workflow, /gh api --method POST .*issues\/\$PR_NUMBER\/comments/);
+  assert.match(workflow, /jq -R -s -r /, 'the JSON event stream must be decoded to raw Markdown');
+  assert.match(workflow, /git ls-files -s -z/, 'tracked symlinks must be dropped from the untrusted checkout');
+  assert.match(workflow, /git show "\$BASE_SHA:REVIEW\.md"/, 'criteria must come from the base branch');
+  assert.match(workflow, /unset GITHUB_TOKEN GH_TOKEN/);
+  assert.match(
+    workflow,
+    /Reviewed commit \\?`%s\\?`/,
+    'the published comment must identify the exact reviewed commit',
+  );
+
+  assert.doesNotMatch(workflow, /gh pr review|REQUEST_CHANGES|\bAPPROVE\b|gh pr merge/);
+  assert.doesNotMatch(
+    workflow,
+    /mise run (check|test|lint|build|e2e)/,
+    'the reviewer must not rerun project CI',
+  );
+});
+
+test('the AI review contract and pull request template are documented', () => {
+  const review = read('REVIEW.md');
+  for (const heading of [
+    '## What to review',
+    '## Severity levels',
+    '## Report format',
+    '## Boundaries',
+  ]) {
+    assert.ok(review.includes(heading), `REVIEW.md must contain "${heading}"`);
+  }
+  for (const severity of ['Critical', 'High', 'Medium', 'Low']) {
+    assert.match(review, new RegExp(`\\*\\*${severity}\\*\\*`), `REVIEW.md must define ${severity}`);
+  }
+  assert.match(review, /general comment only/i);
+  assert.match(review, /not a required merge check/i);
+
+  const template = read('.github/pull_request_template.md');
+  for (const heading of ['## Context', '## Tests', '## Risk', '## Rollback']) {
+    assert.ok(template.includes(heading), `pull request template must contain "${heading}"`);
+  }
+
+  assert.match(read('docs/ci.md'), /\.github\/workflows\/review\.yml/);
+});
