@@ -15,8 +15,8 @@ restart (see [deployment](docs/deploy.md)).
 
 ## Features
 
-- The owner creates **Meeting Types** (name, description, duration 5–240 minutes) and sees all
-  upcoming **Bookings**.
+- The owner creates **Meeting Types** (name, description, duration 5–240 minutes), sees all
+  upcoming **Bookings**, and can delete an upcoming Booking.
 - A guest picks a meeting type, a day within the 14-day horizon and a free **Slot**, then leaves
   a name, email and comment.
 - Free slots = the 09:00–18:00 working window minus occupied intervals; any time overlap blocks

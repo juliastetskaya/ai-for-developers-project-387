@@ -194,7 +194,7 @@ suitable server-code generator) and kept in sync with the contract by API e2e te
 | --- | --- | --- |
 | `/` | Landing | describes the service and leads to the Booking Page |
 | `/book` | Booking Page | Meeting Type → day → Slot → guest form → confirmation |
-| `/admin` | Owner Dashboard | creating Meeting Types and listing upcoming Bookings |
+| `/admin` | Owner Dashboard | creating Meeting Types, listing upcoming Bookings, and deleting them |
 
 - `lib/api.ts` configures the generated client with `VITE_API_URL` (default
   `http://localhost:3000`) and normalizes any error to `{ status, code, message, details }`.

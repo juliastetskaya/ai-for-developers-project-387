@@ -9,7 +9,7 @@ A visitor who books a meeting without any registration or account.
 _Avoid_: user, client, visitor, customer
 
 **Calendar Owner**:
-The single, predefined person who owns the calendar. Creates Meeting Types and views upcoming Bookings.
+The single, predefined person who owns the calendar. Creates Meeting Types, views upcoming Bookings, and can delete an upcoming Booking.
 _Avoid_: admin, host, manager
 
 ## Core Domain

@@ -390,6 +390,12 @@ function OwnerDashboardPage() {
                         </Button>
                       </div>
                     </div>
+                  ) : deletingId === booking.id ? (
+                    <div className="mt-2">
+                      <Button type="button" variant="outline" disabled>
+                        Deleting...
+                      </Button>
+                    </div>
                   ) : (
                     <div className="mt-2">
                       <Button

@@ -450,6 +450,46 @@ describe('OwnerDashboardPage', () => {
       expect(mockedDeleteBooking).toHaveBeenLastCalledWith(earlierBooking.id)
     })
 
+    it('shows a pending state and disables the action while a retry is in progress', async () => {
+      let resolveRetry!: (error: Awaited<ReturnType<typeof deleteBooking>>) => void
+      mockedDeleteBooking
+        .mockResolvedValueOnce({
+          status: 500,
+          code: 'internal_error',
+          message: 'Internal server error',
+        })
+        .mockReturnValueOnce(
+          new Promise((resolve) => {
+            resolveRetry = resolve
+          }),
+        )
+      const list = await renderWithBookings()
+
+      fireEvent.click(firstDeleteButton(list))
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+
+      const alert = await screen.findByRole('alert')
+      fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }))
+
+      const row = within(list).getByText('Ada Lovelace').closest('article')!
+      expect(within(row).getByText('Deleting...')).toBeInTheDocument()
+      expect(
+        within(row).queryByRole('button', { name: 'Delete booking' }),
+      ).not.toBeInTheDocument()
+      expect(
+        within(row).getByRole('button', { name: 'Deleting...' }),
+      ).toBeDisabled()
+      expect(within(list).getByText('Ada Lovelace')).toBeInTheDocument()
+
+      resolveRetry(null)
+
+      await waitFor(() =>
+        expect(
+          within(list).queryByText('Ada Lovelace'),
+        ).not.toBeInTheDocument(),
+      )
+    })
+
     it('leaves the booking intact when the confirmation is cancelled', async () => {
       const list = await renderWithBookings()
 
