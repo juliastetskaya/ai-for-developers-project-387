@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+  Query,
+} from '@nestjs/common';
 import type { Booking } from './booking.js';
 import { BookingsService } from './bookings.service.js';
 
@@ -14,5 +23,11 @@ export class BookingsController {
   @Post()
   create(@Body() body: unknown): Booking {
     return this.bookings.create(body);
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  remove(@Param('id') id: string): void {
+    this.bookings.delete(id);
   }
 }

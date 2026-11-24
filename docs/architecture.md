@@ -51,7 +51,7 @@ apps/backend/                 NestJS API and serving of the built SPA
     ├── slots/                pure logic for Working Window, horizon and Slot slicing
     ├── meeting-types/        controller → service → repository
     ├── availability/         free Slots for a single day
-    ├── bookings/             Booking creation and listing
+    ├── bookings/             Booking creation, listing and deletion
     └── health/               GET /health
 
 apps/frontend/                React SPA
@@ -62,7 +62,7 @@ apps/frontend/                React SPA
 
 packages/api-client/          generated typed SDK
 typespec/main.tsp             source API contract
-e2e/                          Playwright golden path
+e2e/                          Playwright browser scenarios (guest golden path and owner deletion)
 scripts/                      version, CI config and release-please checks, Playwright backend
 ```
 
@@ -104,7 +104,7 @@ directly.
 | `HealthModule` | `GET /health` → `{ "status": "ok" }` |
 | `MeetingTypesModule` | list and create Meeting Types; field limits and trimming |
 | `AvailabilityModule` | free Slots for a date for the selected Meeting Type |
-| `BookingsModule` | create a Booking (atomically) and list upcoming ones |
+| `BookingsModule` | create, list and delete Bookings; deletion frees the interval |
 | `slots/` | pure functions: working window, horizon, Slot slicing, alignment check |
 | `common/` | `ApiError`, error codes, field reading and validation, `AllExceptionsFilter` |
 
@@ -186,6 +186,7 @@ suitable server-code generator) and kept in sync with the contract by API e2e te
 | `GET /availability?meetingTypeId&date` | free Slots for a day (date in the owner's timezone) |
 | `GET /bookings?scope=upcoming` | upcoming Bookings with the nested Meeting Type |
 | `POST /bookings` | create a Booking; overlap → 409 |
+| `DELETE /bookings/{id}` | hard-delete a Booking; frees its interval → 204, unknown id → 404 |
 
 ## Frontend
 
@@ -193,7 +194,7 @@ suitable server-code generator) and kept in sync with the contract by API e2e te
 | --- | --- | --- |
 | `/` | Landing | describes the service and leads to the Booking Page |
 | `/book` | Booking Page | Meeting Type → day → Slot → guest form → confirmation |
-| `/admin` | Owner Dashboard | creating Meeting Types and listing upcoming Bookings |
+| `/admin` | Owner Dashboard | creating Meeting Types, listing upcoming Bookings, and deleting them |
 
 - `lib/api.ts` configures the generated client with `VITE_API_URL` (default
   `http://localhost:3000`) and normalizes any error to `{ status, code, message, details }`.
@@ -234,16 +235,18 @@ The app uses no secrets: there is no authentication and no external services.
 | Backend unit | Vitest | `slots` (window, horizon, slicing), parsing and validation, `DatabaseService` and migrations |
 | Backend e2e | Vitest + supertest, temporary SQLite | HTTP contract, error codes, Slot race, migrations from scratch |
 | Frontend | Vitest + Testing Library | pages, calendar, horizon, API error handling |
-| Golden path | Playwright, real servers | the guest journey end to end: Landing → `/book` → Slot → confirmation |
+| Browser scenarios | Playwright, real servers | the guest golden path (Landing → `/book` → Slot → confirmation) and owner booking deletion (delete → freed Slot → guest rebook) |
 
-The golden path starts the backend on `3100` and the frontend on `5273`, uses a separate database
-in a temporary directory and does not depend on dev data. It is part of `mise run check` and CI.
+The browser scenarios start the backend on `3100` and the frontend on `5273`, use a separate database
+in a temporary directory and do not depend on dev data. Both are part of `mise run check` and CI;
+`head-browser-evidence` re-runs them against the pull request head SHA for the pre-merge artifact.
 
 ## Boundaries and limitations
 
 - No authentication, accounts or roles: the Owner Dashboard is open to anyone who knows the
   address.
-- No cancellation or rescheduling of Bookings, no notifications and no external calendar sync.
+- No rescheduling; the Calendar Owner can delete an upcoming Booking. There are
+  no notifications and no external calendar sync.
 - The timezone is not selectable: it is fixed for the owner (`Europe/Moscow`).
 - Data on free Render is ephemeral: the container is recreated and the database is empty.
 - The app is designed for a single instance: one SQLite file and one process; there is no

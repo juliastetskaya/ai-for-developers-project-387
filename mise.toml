@@ -45,7 +45,7 @@ description = "Run backend e2e tests"
 run = "pnpm test:e2e"
 
 [tasks."e2e:golden"]
-description = "Run the Playwright golden path against the real backend and frontend (not part of `check`)"
+description = "Run the Playwright browser scenarios against the real backend and frontend (part of `check`)"
 run = "pnpm test:golden-path"
 
 [tasks."docker:build"]
@@ -90,7 +90,7 @@ description = "Validate CI config, workflow files and the OpenCode attempt budge
 run = "node --test scripts/ci-config.test.mjs scripts/opencode-budget.test.mjs && actionlint"
 
 [tasks.check]
-description = "Run all checks: lint, typecheck, unit + e2e tests, browser golden path, build, SDK freshness, version sync, release-please and CI config"
+description = "Run all checks: lint, typecheck, unit + e2e tests, browser scenarios, build, SDK freshness, version sync, release-please and CI config"
 # Run the gates sequentially: `check:sdk` regenerates the SDK in place, so running
 # it concurrently with typecheck/tests/build can race on the generated client.
 run = """

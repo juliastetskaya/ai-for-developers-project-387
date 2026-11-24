@@ -1,23 +1,31 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { Booking, MeetingType } from 'api-client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createMeetingType,
+  deleteBooking,
   listMeetingTypes,
   listUpcomingBookings,
   type ApiResult,
 } from '@/lib/api'
 import OwnerDashboardPage from './owner-dashboard-page'
 
-vi.mock('@/lib/api', () => ({
-  listMeetingTypes: vi.fn(),
-  createMeetingType: vi.fn(),
-  listUpcomingBookings: vi.fn(),
-}))
+vi.mock('@/lib/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api')>()
+
+  return {
+    ...actual,
+    listMeetingTypes: vi.fn(),
+    createMeetingType: vi.fn(),
+    listUpcomingBookings: vi.fn(),
+    deleteBooking: vi.fn(),
+  }
+})
 
 const mockedListMeetingTypes = vi.mocked(listMeetingTypes)
 const mockedCreateMeetingType = vi.mocked(createMeetingType)
 const mockedListUpcomingBookings = vi.mocked(listUpcomingBookings)
+const mockedDeleteBooking = vi.mocked(deleteBooking)
 
 const existingType: MeetingType = {
   id: 1,
@@ -349,5 +357,274 @@ describe('OwnerDashboardPage', () => {
     expect(
       await screen.findByRole('heading', { name: 'Intro call' }),
     ).toBeInTheDocument()
+  })
+
+  describe('deleting a booking', () => {
+    async function renderWithBookings() {
+      mockedListMeetingTypes.mockResolvedValue(resolvedMeetingTypes([]))
+      mockedListUpcomingBookings.mockResolvedValue(
+        resolvedBookings([earlierBooking, laterBooking]),
+      )
+
+      render(<OwnerDashboardPage />)
+
+      return screen.findByRole('list', { name: 'Upcoming bookings' })
+    }
+
+    function firstDeleteButton(list: HTMLElement) {
+      return within(list).getAllByRole('button', { name: 'Delete booking' })[0]
+    }
+
+    it('renders a delete control for each upcoming booking', async () => {
+      const list = await renderWithBookings()
+
+      expect(
+        within(list).getAllByRole('button', { name: 'Delete booking' }),
+      ).toHaveLength(2)
+    })
+
+    it('asks for confirmation before deleting', async () => {
+      const list = await renderWithBookings()
+
+      fireEvent.click(firstDeleteButton(list))
+
+      expect(screen.getByText('Delete this booking?')).toBeInTheDocument()
+      expect(mockedDeleteBooking).not.toHaveBeenCalled()
+    })
+
+    it('removes the row on 204 without refetching', async () => {
+      mockedDeleteBooking.mockResolvedValue(null)
+      const list = await renderWithBookings()
+
+      fireEvent.click(firstDeleteButton(list))
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+
+      await waitFor(() =>
+        expect(
+          within(list).queryByText('Ada Lovelace'),
+        ).not.toBeInTheDocument(),
+      )
+      expect(mockedDeleteBooking).toHaveBeenCalledWith(earlierBooking.id)
+      expect(mockedListUpcomingBookings).toHaveBeenCalledTimes(1)
+      expect(within(list).getByText('Grace Hopper')).toBeInTheDocument()
+    })
+
+    it('removes the row silently when the booking is already gone (404)', async () => {
+      mockedDeleteBooking.mockResolvedValue({
+        status: 404,
+        code: 'not_found',
+        message: 'Booking not found',
+      })
+      const list = await renderWithBookings()
+
+      fireEvent.click(firstDeleteButton(list))
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+
+      await waitFor(() =>
+        expect(
+          within(list).queryByText('Ada Lovelace'),
+        ).not.toBeInTheDocument(),
+      )
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('keeps the row and shows an inline error with retry on other failures', async () => {
+      mockedDeleteBooking
+        .mockResolvedValueOnce({
+          status: 500,
+          code: 'internal_error',
+          message: 'Internal server error',
+        })
+        .mockResolvedValueOnce(null)
+      const list = await renderWithBookings()
+
+      fireEvent.click(firstDeleteButton(list))
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent("Couldn't delete booking.")
+      expect(within(list).getByText('Ada Lovelace')).toBeInTheDocument()
+
+      fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }))
+
+      await waitFor(() =>
+        expect(
+          within(list).queryByText('Ada Lovelace'),
+        ).not.toBeInTheDocument(),
+      )
+      expect(mockedDeleteBooking).toHaveBeenLastCalledWith(earlierBooking.id)
+    })
+
+    it('clears the pending state and offers retry when the SDK call rejects', async () => {
+      mockedDeleteBooking
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockResolvedValueOnce(null)
+      const list = await renderWithBookings()
+
+      fireEvent.click(firstDeleteButton(list))
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent("Couldn't delete booking.")
+      expect(alert).toHaveTextContent('Something went wrong. Please try again.')
+      expect(within(list).getByText('Ada Lovelace')).toBeInTheDocument()
+      expect(screen.queryByText('Deleting...')).not.toBeInTheDocument()
+
+      fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }))
+
+      await waitFor(() =>
+        expect(
+          within(list).queryByText('Ada Lovelace'),
+        ).not.toBeInTheDocument(),
+      )
+      expect(mockedDeleteBooking).toHaveBeenLastCalledWith(earlierBooking.id)
+    })
+
+    it('shows a pending state and disables the action while a retry is in progress', async () => {
+      let resolveRetry!: (error: Awaited<ReturnType<typeof deleteBooking>>) => void
+      mockedDeleteBooking
+        .mockResolvedValueOnce({
+          status: 500,
+          code: 'internal_error',
+          message: 'Internal server error',
+        })
+        .mockReturnValueOnce(
+          new Promise((resolve) => {
+            resolveRetry = resolve
+          }),
+        )
+      const list = await renderWithBookings()
+
+      fireEvent.click(firstDeleteButton(list))
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+
+      const alert = await screen.findByRole('alert')
+      fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }))
+
+      const row = within(list).getByText('Ada Lovelace').closest('article')!
+      expect(within(row).getByText('Deleting...')).toBeInTheDocument()
+      expect(
+        within(row).queryByRole('button', { name: 'Delete booking' }),
+      ).not.toBeInTheDocument()
+      expect(
+        within(row).getByRole('button', { name: 'Deleting...' }),
+      ).toBeDisabled()
+      expect(within(list).getByText('Ada Lovelace')).toBeInTheDocument()
+
+      resolveRetry(null)
+
+      await waitFor(() =>
+        expect(
+          within(list).queryByText('Ada Lovelace'),
+        ).not.toBeInTheDocument(),
+      )
+    })
+
+    it('keeps the second row pending when concurrent deletes finish out of order', async () => {
+      let resolveFirst!: (error: Awaited<ReturnType<typeof deleteBooking>>) => void
+      let resolveSecond!: (error: Awaited<ReturnType<typeof deleteBooking>>) => void
+      mockedDeleteBooking
+        .mockReturnValueOnce(
+          new Promise((resolve) => {
+            resolveFirst = resolve
+          }),
+        )
+        .mockReturnValueOnce(
+          new Promise((resolve) => {
+            resolveSecond = resolve
+          }),
+        )
+      const list = await renderWithBookings()
+
+      fireEvent.click(firstDeleteButton(list))
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+
+      fireEvent.click(
+        within(list).getAllByRole('button', { name: 'Delete booking' })[0],
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+
+      const firstRow = within(list).getByText('Ada Lovelace').closest('article')!
+      const secondRow = within(list).getByText('Grace Hopper').closest('article')!
+      expect(within(firstRow).getByText('Deleting...')).toBeInTheDocument()
+      expect(within(secondRow).getByText('Deleting...')).toBeInTheDocument()
+
+      resolveFirst(null)
+
+      await waitFor(() =>
+        expect(
+          within(list).queryByText('Ada Lovelace'),
+        ).not.toBeInTheDocument(),
+      )
+      const remainingRow = within(list).getByText('Grace Hopper').closest('article')!
+      expect(within(remainingRow).getByText('Deleting...')).toBeInTheDocument()
+      expect(
+        within(remainingRow).getByRole('button', { name: 'Deleting...' }),
+      ).toBeDisabled()
+
+      resolveSecond(null)
+
+      await waitFor(() =>
+        expect(
+          within(list).queryByText('Grace Hopper'),
+        ).not.toBeInTheDocument(),
+      )
+    })
+
+    it('keeps the retry action when a concurrent delete succeeds', async () => {
+      let resolveFirst!: (error: Awaited<ReturnType<typeof deleteBooking>>) => void
+      let resolveSecond!: (error: Awaited<ReturnType<typeof deleteBooking>>) => void
+      mockedDeleteBooking
+        .mockReturnValueOnce(
+          new Promise((resolve) => {
+            resolveFirst = resolve
+          }),
+        )
+        .mockReturnValueOnce(
+          new Promise((resolve) => {
+            resolveSecond = resolve
+          }),
+        )
+      const list = await renderWithBookings()
+
+      fireEvent.click(firstDeleteButton(list))
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+
+      fireEvent.click(
+        within(list).getAllByRole('button', { name: 'Delete booking' })[0],
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+
+      resolveFirst({
+        status: 500,
+        code: 'internal_error',
+        message: 'Internal server error',
+      })
+
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent("Couldn't delete booking.")
+      expect(within(alert).getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+
+      resolveSecond(null)
+
+      await waitFor(() =>
+        expect(
+          within(list).queryByText('Grace Hopper'),
+        ).not.toBeInTheDocument(),
+      )
+      expect(within(list).getByText('Ada Lovelace')).toBeInTheDocument()
+      expect(within(alert).getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+    })
+
+    it('leaves the booking intact when the confirmation is cancelled', async () => {
+      const list = await renderWithBookings()
+
+      fireEvent.click(firstDeleteButton(list))
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+      expect(within(list).getByText('Ada Lovelace')).toBeInTheDocument()
+      expect(screen.queryByText('Delete this booking?')).not.toBeInTheDocument()
+      expect(mockedDeleteBooking).not.toHaveBeenCalled()
+    })
   })
 })

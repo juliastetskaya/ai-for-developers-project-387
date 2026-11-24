@@ -85,6 +85,53 @@ test('CI builds the production Docker image in a separate pull-request job', () 
   );
 });
 
+test('CI verifies the PR head SHA and uploads browser evidence', () => {
+  const workflow = read('.github/workflows/check.yml');
+  const job = workflowJob(workflow, 'head-browser-evidence');
+  assert.match(
+    job,
+    /if:\s*github\.event_name == 'pull_request'/,
+    'the evidence job must run on pull requests only',
+  );
+  assert.match(
+    job,
+    /ref:\s*\$\{\{\s*github\.event\.pull_request\.head\.sha\s*\}\}/,
+    'the evidence job must check out the author head, not the merge commit',
+  );
+  assert.match(
+    job,
+    /persist-credentials:\s*false/,
+    'checkout must not leave the GITHUB_TOKEN in git config',
+  );
+  assert.match(job, /git rev-parse HEAD/, 'the actual checked-out SHA must be recorded');
+  assert.match(job, /--trace on/, 'successful runs must record a Playwright trace');
+  assert.match(job, /e2e\/booking-delete\.spec\.ts/);
+  assert.match(job, /e2e\/golden-path\.spec\.ts/);
+  assert.match(
+    job,
+    /PLAYWRIGHT_JSON_OUTPUT_NAME:\s*results\.json/,
+    'the JSON reporter must write results.json',
+  );
+  assert.match(
+    job,
+    /PLAYWRIGHT_JSON_OUTPUT_DIR:\s*\$\{\{\s*runner\.temp\s*\}\}\/head-browser/,
+    'the JSON reporter output must land in the artifact directory',
+  );
+  assert.match(
+    job,
+    /test -s "\$RUNNER_TEMP\/head-browser\/results\.json"/,
+    'the evidence job must fail when the JSON result is missing',
+  );
+  assert.match(job, /uses: actions\/upload-artifact@/);
+  assert.match(job, /if:\s*always\(\)/, 'evidence must upload even when a scenario fails');
+  assert.match(
+    job,
+    /name:\s*head-browser-\$\{\{\s*github\.event\.pull_request\.head\.sha\s*\}\}/,
+    'the artifact name must carry the head SHA',
+  );
+  assert.match(job, /if-no-files-found:\s*error/);
+});
+
 test('mise test includes backend e2e tests', () => {
   assert.match(miseTask('test'), /test:e2e/);
 });

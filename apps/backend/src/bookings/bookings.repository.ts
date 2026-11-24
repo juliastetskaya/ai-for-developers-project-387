@@ -79,6 +79,14 @@ export class BookingsRepository {
     return rows.map(toBooking);
   }
 
+  deleteById(id: number): boolean {
+    const result = this.database.db
+      .prepare('DELETE FROM "Booking" WHERE "id" = ?')
+      .run(id);
+
+    return result.changes > 0;
+  }
+
   create(input: PersistBookingInput): BookingRecord {
     const db = this.database.db;
     const createdAt = new Date().toISOString();

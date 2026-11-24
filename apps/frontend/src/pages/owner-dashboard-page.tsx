@@ -4,8 +4,10 @@ import { AsyncSection } from '@/components/async-section'
 import { Button } from '@/components/ui/button'
 import {
   createMeetingType,
+  deleteBooking,
   listMeetingTypes,
   listUpcomingBookings,
+  networkError,
   type ApiError,
   type ApiResult,
 } from '@/lib/api'
@@ -37,6 +39,15 @@ function OwnerDashboardPage() {
   const [bookings, setBookings] = useState<Booking[]>([])
   const [bookingsStatus, setBookingsStatus] = useState<LoadStatus>('loading')
   const [bookingsError, setBookingsError] = useState<ApiError | null>(null)
+
+  const [confirmingId, setConfirmingId] = useState<number | null>(null)
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(
+    () => new Set(),
+  )
+  const [failedDelete, setFailedDelete] = useState<{
+    id: number
+    message: string
+  } | null>(null)
 
   const [form, setForm] = useState<CreateFormState>(emptyForm)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
@@ -83,6 +94,39 @@ function OwnerDashboardPage() {
     setBookingsStatus('loading')
     setBookingsError(null)
     void listUpcomingBookings().then(handleBookingsResult)
+  }
+
+  async function handleDelete(id: number) {
+    setDeletingIds((current) => new Set(current).add(id))
+    setFailedDelete((current) => (current?.id === id ? null : current))
+
+    try {
+      const error = await deleteBooking(id).catch(() => networkError())
+
+      if (error && error.code !== 'not_found') {
+        setFailedDelete({ id, message: error.message })
+        return
+      }
+
+      setBookings((current) => current.filter((booking) => booking.id !== id))
+      setFailedDelete((current) => (current?.id === id ? null : current))
+    } finally {
+      // Whatever the outcome, this card must leave the pending state so the
+      // owner can retry. Remove only this id: another row may still be
+      // deleting and must keep its own pending state.
+      setDeletingIds((current) => {
+        const next = new Set(current)
+        next.delete(id)
+        return next
+      })
+      setConfirmingId((current) => (current === id ? null : current))
+    }
+  }
+
+  function retryDelete() {
+    if (failedDelete !== null) {
+      void handleDelete(failedDelete.id)
+    }
   }
 
   function updateField(field: keyof CreateFormState, value: string) {
@@ -337,11 +381,67 @@ function OwnerDashboardPage() {
                   >
                     {booking.guestEmail}
                   </a>
+                  {confirmingId === booking.id ? (
+                    <div className="mt-2 flex flex-col gap-2">
+                      <p className="text-sm">Delete this booking?</p>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          disabled={deletingIds.has(booking.id)}
+                          onClick={() => void handleDelete(booking.id)}
+                        >
+                          {deletingIds.has(booking.id) ? 'Deleting...' : 'Confirm'}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={deletingIds.has(booking.id)}
+                          onClick={() => setConfirmingId(null)}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : deletingIds.has(booking.id) ? (
+                    <div className="mt-2">
+                      <Button type="button" variant="outline" disabled>
+                        Deleting...
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="mt-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          setFailedDelete((current) =>
+                            current?.id === booking.id ? null : current,
+                          )
+                          setConfirmingId(booking.id)
+                        }}
+                      >
+                        Delete booking
+                      </Button>
+                    </div>
+                  )}
                 </article>
               </li>
             ))}
           </ul>
         </AsyncSection>
+
+        {failedDelete && (
+          <div
+            role="alert"
+            className="flex flex-col items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4"
+          >
+            <p>Couldn't delete booking. {failedDelete.message}</p>
+            <Button type="button" variant="outline" onClick={retryDelete}>
+              Retry
+            </Button>
+          </div>
+        )}
       </section>
     </section>
   )

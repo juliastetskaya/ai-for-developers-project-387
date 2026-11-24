@@ -11,20 +11,53 @@ requests; it is not a CI gate and not a required check (see
 
 ## What the pipeline does
 
-The workflow has two independent jobs.
+The workflow has three independent jobs.
 
 ### `check` (push and pull request)
 
-1. `actions/checkout` — checks out the PR head; no repository secrets are used.
+1. `actions/checkout` — checks out the pull request merge commit on `pull_request`
+   (and the pushed commit on `push`); no repository secrets are used. The author's exact
+   head is verified separately by `head-browser-evidence`.
 2. `jdx/mise-action` — installs the pinned toolchain from `mise.toml`
    (Node, pnpm, hk, pitchfork, actionlint).
 3. `mise run setup` — `pnpm install` + `pnpm generate:api` (TypeSpec → OpenAPI → SDK).
-4. `pnpm exec playwright install --with-deps chromium` — the browser for the golden path.
+4. `pnpm exec playwright install --with-deps chromium` — the browser for the browser scenarios.
 5. `mise run check` — the same gate developers run locally.
+
+### `head-browser-evidence` (pull request only)
+
+This job checks out `github.event.pull_request.head.sha` explicitly, records the actual
+`git rev-parse HEAD` in `head-sha.txt` and fails if it differs from the expected head. It
+installs the same toolchain and dependencies, then runs the owner booking-delete scenario
+(`e2e/booking-delete.spec.ts`) and the adjacent guest golden path
+(`e2e/golden-path.spec.ts`) against the real backend and frontend. Trace recording is
+enabled explicitly (`--trace on`) so successful runs are evidence too.
+
+The job uploads the `head-browser-<sha>` Actions artifact with the recorded SHA, Playwright
+JSON results and traces. This artifact is the pre-merge evidence for the author's head:
+download it from the workflow run, compare `head-sha.txt` with the current PR head, and open
+the trace before merging. A new push produces a new run and a new artifact; an older
+artifact still belongs to its old SHA and must not be reused. The job needs no repository
+secrets, and the advisory AI review may run before the artifact exists — a human owns the
+final SHA check.
+
+The same two scenarios also run inside `mise run check`, which checks out the pull-request
+merge commit. The separate job repeats them on purpose: the extra value is the SHA-bound
+artifact with traces for the main and adjacent scenario, not additional coverage. The
+duplicate Playwright time is accepted as the price of that evidence.
+
+The JSON reporter writes `results.json` through `PLAYWRIGHT_JSON_OUTPUT_NAME=results.json`
+with `PLAYWRIGHT_JSON_OUTPUT_DIR` set to the artifact directory, as documented for the
+[Playwright JSON reporter](https://playwright.dev/docs/test-reporters#json-reporter). A
+`test -s` step fails the job if the file is missing, so the artifact always carries the
+machine-readable result next to `head-sha.txt` and the traces.
+
+Changes to this job follow the workflow-file boundary: the OpenCode App cannot push
+`.github/workflows/**`, so the agent reports the change and a maintainer commits it.
 
 ### `docker` (pull request only)
 
-The second job installs the same mise toolchain and runs `mise run docker:build`
+The third job installs the same mise toolchain and runs `mise run docker:build`
 (`docker build --tag cal-clone:local .`). It guards the production artifact — `Dockerfile`,
 `.dockerignore`, `docker-entrypoint.sh` and the same-origin SPA build — which the `check`
 gate never touches. It runs on pull requests only and is not part of `mise run check`:
@@ -35,9 +68,9 @@ the image build takes several minutes and would slow down the main gate.
 | Task        | What it proves                                                        |
 | ----------- | --------------------------------------------------------------------- |
 | `lint`      | oxlint (type-aware for the backend) passes for every package, plus `e2e/`, `playwright.config.ts` and `scripts/`. |
-| `typecheck` | `tsc` passes for backend, frontend (`tsc -b`), the API client, and the golden-path files (`tsconfig.e2e.json`). |
+| `typecheck` | `tsc` passes for backend, frontend (`tsc -b`), the API client, and the `e2e/` files (`tsconfig.e2e.json`). |
 | `test`      | backend unit tests, backend e2e tests, then frontend component tests. |
-| `e2e:golden` | the Playwright guest flow against real backend + frontend servers and a dedicated SQLite database; the booking API is never mocked. |
+| `e2e:golden` | the real-server browser scenarios: owner booking deletion and the guest golden path, against a dedicated SQLite database; the booking API is never mocked. |
 | `build`     | backend (`nest build`) and frontend (`vite build`) compile.           |
 | `check:sdk` | regenerating the SDK produces no diff (generated artifacts are fresh).|
 | `check:versions` | every workspace package uses the root `package.json` version.       |
@@ -318,7 +351,7 @@ mise run lint           # lint
 mise run typecheck      # types
 mise run test           # backend unit + backend e2e + frontend
 mise run test:e2e       # backend e2e only (independent)
-mise run e2e:golden     # Playwright golden path (also part of `check`)
+mise run e2e:golden     # Playwright browser scenarios (also part of `check`)
 mise run build          # backend build + frontend build
 mise run docker:build   # production Docker image (also a separate PR job in CI)
 mise run check:sdk      # generated SDK freshness
@@ -331,12 +364,12 @@ mise run check          # everything above, exactly what CI runs
 Individual package commands remain available: `pnpm --filter backend test:e2e`,
 `pnpm --filter backend build`, `pnpm --filter frontend build`, etc.
 
-The Playwright golden path (`mise run e2e:golden`) is part of `mise run check`, so it runs
-both locally and in CI with the real backend and frontend and a dedicated SQLite database.
-It uses dedicated ports `3100` (API) and `5273` (frontend), so it does not collide with the
-dev servers on `3000`/`5173`. Its TypeScript and scripts are also covered offline: `lint`
+The Playwright browser scenarios (`mise run e2e:golden`) are part of `mise run check`, so they
+run both locally and in CI with the real backend and frontend and a dedicated SQLite database.
+They use dedicated ports `3100` (API) and `5273` (frontend), so they do not collide with the
+dev servers on `3000`/`5173`. Their TypeScript and scripts are also covered offline: `lint`
 runs oxlint over `e2e/`, `playwright.config.ts` and `scripts/`, and `typecheck` runs
-`tsc -p tsconfig.e2e.json`. It is documented in
+`tsc -p tsconfig.e2e.json`. They are documented in
 [architecture.md](architecture.md#testing).
 
 ## Required status check / branch protection
