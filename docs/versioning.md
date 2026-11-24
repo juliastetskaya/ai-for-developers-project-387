@@ -10,7 +10,7 @@ packages.
 
 ## Single source of version
 
-The source of truth is the `version` field in the **root** `package.json` (currently `1.2.0`).
+The source of truth is the `version` field in the **root** `package.json` (currently `1.4.0`).
 
 Every workspace package must have exactly the same version. The package list comes from
 `pnpm-workspace.yaml` (`apps/*`, `packages/*`, `typespec`), so a new package automatically falls
