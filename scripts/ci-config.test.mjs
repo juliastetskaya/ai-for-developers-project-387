@@ -109,8 +109,13 @@ test('CI verifies the PR head SHA and uploads browser evidence', () => {
   assert.match(job, /e2e\/golden-path\.spec\.ts/);
   assert.match(
     job,
-    /PLAYWRIGHT_JSON_OUTPUT_FILE:\s*\$\{\{\s*runner\.temp\s*\}\}\/head-browser\/results\.json/,
-    'the JSON reporter must write into the artifact directory',
+    /PLAYWRIGHT_JSON_OUTPUT_NAME:\s*results\.json/,
+    'the JSON reporter must write results.json',
+  );
+  assert.match(
+    job,
+    /PLAYWRIGHT_JSON_OUTPUT_DIR:\s*\$\{\{\s*runner\.temp\s*\}\}\/head-browser/,
+    'the JSON reporter output must land in the artifact directory',
   );
   assert.match(
     job,

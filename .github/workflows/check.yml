@@ -67,9 +67,8 @@ jobs:
 
       - name: Run the delete and adjacent guest browser scenarios
         env:
-          # Full path for the JSON reporter; PLAYWRIGHT_JSON_OUTPUT_NAME is relative
-          # to the output directory, so it cannot target the artifact root here.
-          PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ runner.temp }}/head-browser/results.json
+          PLAYWRIGHT_JSON_OUTPUT_NAME: results.json
+          PLAYWRIGHT_JSON_OUTPUT_DIR: ${{ runner.temp }}/head-browser
           TESTED_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail

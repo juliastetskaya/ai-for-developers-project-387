@@ -46,11 +46,11 @@ merge commit. The separate job repeats them on purpose: the extra value is the S
 artifact with traces for the main and adjacent scenario, not additional coverage. The
 duplicate Playwright time is accepted as the price of that evidence.
 
-The JSON reporter writes `results.json` through `PLAYWRIGHT_JSON_OUTPUT_FILE`, the
-[documented full-path variable](https://playwright.dev/docs/test-reporters#json-reporter)
-for the pinned Playwright version (`PLAYWRIGHT_JSON_OUTPUT_NAME` is relative to the output
-directory). A `test -s` step fails the job if the file is missing, so the artifact always
-carries the machine-readable result next to `head-sha.txt` and the traces.
+The JSON reporter writes `results.json` through `PLAYWRIGHT_JSON_OUTPUT_NAME=results.json`
+with `PLAYWRIGHT_JSON_OUTPUT_DIR` set to the artifact directory, as documented for the
+[Playwright JSON reporter](https://playwright.dev/docs/test-reporters#json-reporter). A
+`test -s` step fails the job if the file is missing, so the artifact always carries the
+machine-readable result next to `head-sha.txt` and the traces.
 
 Changes to this job follow the workflow-file boundary: the OpenCode App cannot push
 `.github/workflows/**`, so the agent reports the change and a maintainer commits it.
