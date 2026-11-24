@@ -520,6 +520,57 @@ describe('OwnerDashboardPage', () => {
       )
     })
 
+    it('keeps the second row pending when concurrent deletes finish out of order', async () => {
+      let resolveFirst!: (error: Awaited<ReturnType<typeof deleteBooking>>) => void
+      let resolveSecond!: (error: Awaited<ReturnType<typeof deleteBooking>>) => void
+      mockedDeleteBooking
+        .mockReturnValueOnce(
+          new Promise((resolve) => {
+            resolveFirst = resolve
+          }),
+        )
+        .mockReturnValueOnce(
+          new Promise((resolve) => {
+            resolveSecond = resolve
+          }),
+        )
+      const list = await renderWithBookings()
+
+      fireEvent.click(firstDeleteButton(list))
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+
+      fireEvent.click(
+        within(list).getAllByRole('button', { name: 'Delete booking' })[0],
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+
+      const firstRow = within(list).getByText('Ada Lovelace').closest('article')!
+      const secondRow = within(list).getByText('Grace Hopper').closest('article')!
+      expect(within(firstRow).getByText('Deleting...')).toBeInTheDocument()
+      expect(within(secondRow).getByText('Deleting...')).toBeInTheDocument()
+
+      resolveFirst(null)
+
+      await waitFor(() =>
+        expect(
+          within(list).queryByText('Ada Lovelace'),
+        ).not.toBeInTheDocument(),
+      )
+      const remainingRow = within(list).getByText('Grace Hopper').closest('article')!
+      expect(within(remainingRow).getByText('Deleting...')).toBeInTheDocument()
+      expect(
+        within(remainingRow).getByRole('button', { name: 'Deleting...' }),
+      ).toBeDisabled()
+
+      resolveSecond(null)
+
+      await waitFor(() =>
+        expect(
+          within(list).queryByText('Grace Hopper'),
+        ).not.toBeInTheDocument(),
+      )
+    })
+
     it('leaves the booking intact when the confirmation is cancelled', async () => {
       const list = await renderWithBookings()
 

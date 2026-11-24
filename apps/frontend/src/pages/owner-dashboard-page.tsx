@@ -41,7 +41,9 @@ function OwnerDashboardPage() {
   const [bookingsError, setBookingsError] = useState<ApiError | null>(null)
 
   const [confirmingId, setConfirmingId] = useState<number | null>(null)
-  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(
+    () => new Set(),
+  )
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [failedDeleteId, setFailedDeleteId] = useState<number | null>(null)
 
@@ -93,7 +95,7 @@ function OwnerDashboardPage() {
   }
 
   async function handleDelete(id: number) {
-    setDeletingId(id)
+    setDeletingIds((current) => new Set(current).add(id))
     setDeleteError(null)
 
     try {
@@ -108,10 +110,15 @@ function OwnerDashboardPage() {
       setBookings((current) => current.filter((booking) => booking.id !== id))
       setFailedDeleteId(null)
     } finally {
-      // Whatever the outcome, the card must leave the pending state so the
-      // owner can retry.
-      setDeletingId(null)
-      setConfirmingId(null)
+      // Whatever the outcome, this card must leave the pending state so the
+      // owner can retry. Remove only this id: another row may still be
+      // deleting and must keep its own pending state.
+      setDeletingIds((current) => {
+        const next = new Set(current)
+        next.delete(id)
+        return next
+      })
+      setConfirmingId((current) => (current === id ? null : current))
     }
   }
 
@@ -380,22 +387,22 @@ function OwnerDashboardPage() {
                         <Button
                           type="button"
                           variant="destructive"
-                          disabled={deletingId === booking.id}
+                          disabled={deletingIds.has(booking.id)}
                           onClick={() => void handleDelete(booking.id)}
                         >
-                          {deletingId === booking.id ? 'Deleting...' : 'Confirm'}
+                          {deletingIds.has(booking.id) ? 'Deleting...' : 'Confirm'}
                         </Button>
                         <Button
                           type="button"
                           variant="outline"
-                          disabled={deletingId === booking.id}
+                          disabled={deletingIds.has(booking.id)}
                           onClick={() => setConfirmingId(null)}
                         >
                           Cancel
                         </Button>
                       </div>
                     </div>
-                  ) : deletingId === booking.id ? (
+                  ) : deletingIds.has(booking.id) ? (
                     <div className="mt-2">
                       <Button type="button" variant="outline" disabled>
                         Deleting...

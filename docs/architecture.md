@@ -235,10 +235,11 @@ The app uses no secrets: there is no authentication and no external services.
 | Backend unit | Vitest | `slots` (window, horizon, slicing), parsing and validation, `DatabaseService` and migrations |
 | Backend e2e | Vitest + supertest, temporary SQLite | HTTP contract, error codes, Slot race, migrations from scratch |
 | Frontend | Vitest + Testing Library | pages, calendar, horizon, API error handling |
-| Golden path | Playwright, real servers | the guest journey end to end: Landing → `/book` → Slot → confirmation |
+| Browser scenarios | Playwright, real servers | the guest golden path (Landing → `/book` → Slot → confirmation) and owner booking deletion (delete → freed Slot → guest rebook) |
 
-The golden path starts the backend on `3100` and the frontend on `5273`, uses a separate database
-in a temporary directory and does not depend on dev data. It is part of `mise run check` and CI.
+The browser scenarios start the backend on `3100` and the frontend on `5273`, use a separate database
+in a temporary directory and do not depend on dev data. Both are part of `mise run check` and CI;
+`head-browser-evidence` re-runs them against the pull request head SHA for the pre-merge artifact.
 
 ## Boundaries and limitations
 

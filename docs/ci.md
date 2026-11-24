@@ -41,6 +41,18 @@ artifact still belongs to its old SHA and must not be reused. The job needs no r
 secrets, and the advisory AI review may run before the artifact exists — a human owns the
 final SHA check.
 
+The same two scenarios also run inside `mise run check`, which checks out the pull-request
+merge commit. The separate job repeats them on purpose: the extra value is the SHA-bound
+artifact with traces for the main and adjacent scenario, not additional coverage. The
+duplicate Playwright time is accepted as the price of that evidence.
+
+The JSON reporter writes `results.json` through `PLAYWRIGHT_JSON_OUTPUT_FILE`, the
+documented full-path variable for the pinned Playwright version; the artifact therefore
+carries the machine-readable result next to `head-sha.txt` and the traces.
+
+Changes to this job follow the workflow-file boundary: the OpenCode App cannot push
+`.github/workflows/**`, so the agent reports the change and a maintainer commits it.
+
 ### `docker` (pull request only)
 
 The third job installs the same mise toolchain and runs `mise run docker:build`
