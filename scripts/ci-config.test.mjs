@@ -87,14 +87,7 @@ test('CI builds the production Docker image in a separate pull-request job', () 
 
 test('CI verifies the PR head SHA and uploads browser evidence', () => {
   const workflow = read('.github/workflows/check.yml');
-  const start = workflow.search(/^ {2}head-browser-evidence:/m);
-  assert.notEqual(
-    start,
-    -1,
-    'check.yml must define a separate "head-browser-evidence" job',
-  );
-
-  const job = workflow.slice(start);
+  const job = workflowJob(workflow, 'head-browser-evidence');
   assert.match(
     job,
     /if:\s*github\.event_name == 'pull_request'/,
@@ -114,6 +107,16 @@ test('CI verifies the PR head SHA and uploads browser evidence', () => {
   assert.match(job, /--trace on/, 'successful runs must record a Playwright trace');
   assert.match(job, /e2e\/booking-delete\.spec\.ts/);
   assert.match(job, /e2e\/golden-path\.spec\.ts/);
+  assert.match(
+    job,
+    /PLAYWRIGHT_JSON_OUTPUT_FILE:\s*\$\{\{\s*runner\.temp\s*\}\}\/head-browser\/results\.json/,
+    'the JSON reporter must write into the artifact directory',
+  );
+  assert.match(
+    job,
+    /test -s "\$RUNNER_TEMP\/head-browser\/results\.json"/,
+    'the evidence job must fail when the JSON result is missing',
+  );
   assert.match(job, /uses: actions\/upload-artifact@/);
   assert.match(job, /if:\s*always\(\)/, 'evidence must upload even when a scenario fails');
   assert.match(

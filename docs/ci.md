@@ -47,7 +47,9 @@ artifact with traces for the main and adjacent scenario, not additional coverage
 duplicate Playwright time is accepted as the price of that evidence.
 
 The JSON reporter writes `results.json` through `PLAYWRIGHT_JSON_OUTPUT_FILE`, the
-documented full-path variable for the pinned Playwright version; the artifact therefore
+[documented full-path variable](https://playwright.dev/docs/test-reporters#json-reporter)
+for the pinned Playwright version (`PLAYWRIGHT_JSON_OUTPUT_NAME` is relative to the output
+directory). A `test -s` step fails the job if the file is missing, so the artifact always
 carries the machine-readable result next to `head-sha.txt` and the traces.
 
 Changes to this job follow the workflow-file boundary: the OpenCode App cannot push
@@ -349,7 +351,7 @@ mise run lint           # lint
 mise run typecheck      # types
 mise run test           # backend unit + backend e2e + frontend
 mise run test:e2e       # backend e2e only (independent)
-mise run e2e:golden     # Playwright golden path (also part of `check`)
+mise run e2e:golden     # Playwright browser scenarios (also part of `check`)
 mise run build          # backend build + frontend build
 mise run docker:build   # production Docker image (also a separate PR job in CI)
 mise run check:sdk      # generated SDK freshness
@@ -362,12 +364,12 @@ mise run check          # everything above, exactly what CI runs
 Individual package commands remain available: `pnpm --filter backend test:e2e`,
 `pnpm --filter backend build`, `pnpm --filter frontend build`, etc.
 
-The Playwright golden path (`mise run e2e:golden`) is part of `mise run check`, so it runs
-both locally and in CI with the real backend and frontend and a dedicated SQLite database.
-It uses dedicated ports `3100` (API) and `5273` (frontend), so it does not collide with the
-dev servers on `3000`/`5173`. Its TypeScript and scripts are also covered offline: `lint`
+The Playwright browser scenarios (`mise run e2e:golden`) are part of `mise run check`, so they
+run both locally and in CI with the real backend and frontend and a dedicated SQLite database.
+They use dedicated ports `3100` (API) and `5273` (frontend), so they do not collide with the
+dev servers on `3000`/`5173`. Their TypeScript and scripts are also covered offline: `lint`
 runs oxlint over `e2e/`, `playwright.config.ts` and `scripts/`, and `typecheck` runs
-`tsc -p tsconfig.e2e.json`. It is documented in
+`tsc -p tsconfig.e2e.json`. They are documented in
 [architecture.md](architecture.md#testing).
 
 ## Required status check / branch protection

@@ -67,6 +67,8 @@ jobs:
 
       - name: Run the delete and adjacent guest browser scenarios
         env:
+          # Full path for the JSON reporter; PLAYWRIGHT_JSON_OUTPUT_NAME is relative
+          # to the output directory, so it cannot target the artifact root here.
           PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ runner.temp }}/head-browser/results.json
           TESTED_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
@@ -74,6 +76,9 @@ jobs:
           pnpm exec playwright test e2e/booking-delete.spec.ts e2e/golden-path.spec.ts \
             --trace on --reporter=list,json \
             --output "$RUNNER_TEMP/head-browser/traces"
+
+      - name: Verify the JSON report was written
+        run: test -s "$RUNNER_TEMP/head-browser/results.json"
 
       - name: Upload browser evidence
         if: always()
