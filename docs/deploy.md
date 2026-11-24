@@ -50,8 +50,10 @@ HTTP server to listen on `0.0.0.0:$PORT`.
 2. Confirm creation of the `cal-clone` service. The first build builds the image (several minutes)
    and starts the service. The `onrender.com` subdomain is unique across Render: if `cal-clone` is
    already taken, the platform adds a suffix — the current address is
-   `https://cal-clone-3v43.onrender.com`.
-3. Check `https://cal-clone-3v43.onrender.com/health` and open the root — the SPA and API should
+   `https://cal-clone-gqib.onrender.com` (Blueprint `ai-for-developers-project-387`; the older
+   `cal-clone-3v43` still points at the previous repository
+   `ai-for-developers-project-386` and no longer receives deploys).
+3. Check `https://cal-clone-gqib.onrender.com/health` and open the root — the SPA and API should
    work from the same origin (admin — `/admin`, guest booking — `/book`).
 4. API requests can be sent through the Render MCP server (`opencode.json`): it can read logs,
    metrics and deploys, change environment variables and trigger a redeploy. Render does not
