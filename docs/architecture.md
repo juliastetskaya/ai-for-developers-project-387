@@ -62,7 +62,7 @@ apps/frontend/                React SPA
 
 packages/api-client/          generated typed SDK
 typespec/main.tsp             source API contract
-e2e/                          Playwright golden path
+e2e/                          Playwright browser scenarios (guest golden path and owner deletion)
 scripts/                      version, CI config and release-please checks, Playwright backend
 ```
 
@@ -104,7 +104,7 @@ directly.
 | `HealthModule` | `GET /health` → `{ "status": "ok" }` |
 | `MeetingTypesModule` | list and create Meeting Types; field limits and trimming |
 | `AvailabilityModule` | free Slots for a date for the selected Meeting Type |
-| `BookingsModule` | create a Booking (atomically) and list upcoming ones |
+| `BookingsModule` | create, list and delete Bookings; deletion frees the interval |
 | `slots/` | pure functions: working window, horizon, Slot slicing, alignment check |
 | `common/` | `ApiError`, error codes, field reading and validation, `AllExceptionsFilter` |
 

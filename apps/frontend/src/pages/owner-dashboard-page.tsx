@@ -44,8 +44,10 @@ function OwnerDashboardPage() {
   const [deletingIds, setDeletingIds] = useState<Set<number>>(
     () => new Set(),
   )
-  const [deleteError, setDeleteError] = useState<string | null>(null)
-  const [failedDeleteId, setFailedDeleteId] = useState<number | null>(null)
+  const [failedDelete, setFailedDelete] = useState<{
+    id: number
+    message: string
+  } | null>(null)
 
   const [form, setForm] = useState<CreateFormState>(emptyForm)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
@@ -96,19 +98,18 @@ function OwnerDashboardPage() {
 
   async function handleDelete(id: number) {
     setDeletingIds((current) => new Set(current).add(id))
-    setDeleteError(null)
+    setFailedDelete((current) => (current?.id === id ? null : current))
 
     try {
       const error = await deleteBooking(id).catch(() => networkError())
 
       if (error && error.code !== 'not_found') {
-        setDeleteError(error.message)
-        setFailedDeleteId(id)
+        setFailedDelete({ id, message: error.message })
         return
       }
 
       setBookings((current) => current.filter((booking) => booking.id !== id))
-      setFailedDeleteId(null)
+      setFailedDelete((current) => (current?.id === id ? null : current))
     } finally {
       // Whatever the outcome, this card must leave the pending state so the
       // owner can retry. Remove only this id: another row may still be
@@ -123,8 +124,8 @@ function OwnerDashboardPage() {
   }
 
   function retryDelete() {
-    if (failedDeleteId !== null) {
-      void handleDelete(failedDeleteId)
+    if (failedDelete !== null) {
+      void handleDelete(failedDelete.id)
     }
   }
 
@@ -414,8 +415,9 @@ function OwnerDashboardPage() {
                         type="button"
                         variant="outline"
                         onClick={() => {
-                          setDeleteError(null)
-                          setFailedDeleteId(null)
+                          setFailedDelete((current) =>
+                            current?.id === booking.id ? null : current,
+                          )
                           setConfirmingId(booking.id)
                         }}
                       >
@@ -429,17 +431,15 @@ function OwnerDashboardPage() {
           </ul>
         </AsyncSection>
 
-        {deleteError && (
+        {failedDelete && (
           <div
             role="alert"
             className="flex flex-col items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4"
           >
-            <p>Couldn't delete booking. {deleteError}</p>
-            {failedDeleteId !== null && (
-              <Button type="button" variant="outline" onClick={retryDelete}>
-                Retry
-              </Button>
-            )}
+            <p>Couldn't delete booking. {failedDelete.message}</p>
+            <Button type="button" variant="outline" onClick={retryDelete}>
+              Retry
+            </Button>
           </div>
         )}
       </section>

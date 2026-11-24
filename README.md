@@ -47,9 +47,9 @@ mise run dev:frontend   # SPA on http://localhost:5173
 | `mise run dev:backend` / `dev:frontend` | run the dev servers separately; `mise daemons start` runs both in the background |
 | `mise run build` | build the backend and frontend |
 | `mise run test` | backend unit and e2e tests, frontend tests |
-| `mise run e2e:golden` | Playwright guest golden path against real servers |
+| `mise run e2e:golden` | Playwright browser scenarios (guest golden path and owner booking deletion) against real servers |
 | `mise run docker:build` / `docker:up` / `docker:down` | production image and local run via Compose |
-| `mise run check` | full gate: lint, types, tests, golden path, build, SDK freshness, versions, CI config |
+| `mise run check` | full gate: lint, types, tests, browser scenarios, build, SDK freshness, versions, CI config |
 | `pnpm generate:api` | regenerate OpenAPI and the SDK after changes in `typespec/` |
 
 `mise run check` is what CI runs; it must be green before merging.

@@ -571,6 +571,51 @@ describe('OwnerDashboardPage', () => {
       )
     })
 
+    it('keeps the retry action when a concurrent delete succeeds', async () => {
+      let resolveFirst!: (error: Awaited<ReturnType<typeof deleteBooking>>) => void
+      let resolveSecond!: (error: Awaited<ReturnType<typeof deleteBooking>>) => void
+      mockedDeleteBooking
+        .mockReturnValueOnce(
+          new Promise((resolve) => {
+            resolveFirst = resolve
+          }),
+        )
+        .mockReturnValueOnce(
+          new Promise((resolve) => {
+            resolveSecond = resolve
+          }),
+        )
+      const list = await renderWithBookings()
+
+      fireEvent.click(firstDeleteButton(list))
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+
+      fireEvent.click(
+        within(list).getAllByRole('button', { name: 'Delete booking' })[0],
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+
+      resolveFirst({
+        status: 500,
+        code: 'internal_error',
+        message: 'Internal server error',
+      })
+
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent("Couldn't delete booking.")
+      expect(within(alert).getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+
+      resolveSecond(null)
+
+      await waitFor(() =>
+        expect(
+          within(list).queryByText('Grace Hopper'),
+        ).not.toBeInTheDocument(),
+      )
+      expect(within(list).getByText('Ada Lovelace')).toBeInTheDocument()
+      expect(within(alert).getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+    })
+
     it('leaves the booking intact when the confirmation is cancelled', async () => {
       const list = await renderWithBookings()
 
