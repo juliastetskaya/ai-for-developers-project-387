@@ -360,6 +360,34 @@ test('creation calls gh with the exact payload once', () => {
   assert.match(summaryLines(executed, { testMode: false, createIssues: true, runUrl: LINKS.runUrl }), /Created #42/);
 });
 
+test('creation in test mode labels the synthetic issue lighthouse-test', () => {
+  const plan = planIssues({
+    report: reportWith([testFinding()]),
+    testMode: true,
+    createIssues: true,
+    existingReal: [],
+    existingTest: [],
+    links: LINKS,
+    deps,
+  });
+  const { runGh, calls } = fakeGh({ issues: { 'lighthouse-test': [] } });
+  const executed = executePlan({
+    plan,
+    runGh,
+    repo: 'acme/repo',
+    links: LINKS,
+    testMode: true,
+  });
+  const item = executed.items.find((entry) => entry.kind === 'test');
+  assert.equal(item.decision, 'created');
+
+  const create = calls.find((args) => args[1] === 'create');
+  const labels = create.flatMap((value, index) =>
+    value === '--label' ? [create[index + 1]] : [],
+  );
+  assert.deepEqual(labels, ['lighthouse-test']);
+});
+
 test('the test issue body is deterministic', () => {
   const first = buildTestIssue(testFinding(), {
     ...LINKS,

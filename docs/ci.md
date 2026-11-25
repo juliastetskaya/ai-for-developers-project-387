@@ -384,7 +384,10 @@ downstream job because the scripts enforce the dispatch-only test-mode guard the
 
 Every job checks out `github.event.repository.default_branch`: the audit targets the deployed
 build, and the scripts that consume the API key or a write token must be the trusted
-default-branch versions rather than a copy from the dispatched branch.
+default-branch versions rather than a copy from the dispatched branch. The analysis and both
+publishing checkouts also drop tracked symlinks before any model or `repo_evidence` path is
+used: `external_directory` is path-string based, so a symlink inside the worktree could
+otherwise point at a runner file outside it, the same hardening as `review.yml`.
 
 ### Reports, hashes and the model input
 
@@ -416,11 +419,13 @@ default-branch versions rather than a copy from the dispatched branch.
   fingerprint. A closed issue still blocks a new one. Titles are only a secondary veto
   (similarity ≥ 0.8) for issues created before fingerprints existed; a title never creates a
   finding on its own.
-- The actionability gate refuses a finding unless `repo_evidence.file` exists in the repository
-  and `repo_evidence.symbol` occurs in that file, so host and platform noise cannot become an
-  issue. It also refuses an audit id or route that is absent from the digest: `build` writes
+- The actionability gate refuses a finding unless `repo_evidence.file` is a real file in the
+  repository and `repo_evidence.symbol` (at least three characters) occurs in it. This filters
+  invented evidence; it does not prove the fix itself is correct, so findings stay advisory. It
+  also refuses an audit id or route that is absent from the digest: `build` writes
   `audits.json` next to `context.md`, and `publish-preview`/`publish-create` validate every
-  finding against it, so a fabricated audit cannot be filed even with real repository evidence.
+  finding against it — an empty digest allows nothing — so a fabricated audit cannot be filed
+  even with real repository evidence.
 - Labels for real findings: `lighthouse`, the category (`performance`, `accessibility`, `seo`,
   `best-practices`) and `bug` (or `enhancement` for `low`). At most three real issues are
   created per run.

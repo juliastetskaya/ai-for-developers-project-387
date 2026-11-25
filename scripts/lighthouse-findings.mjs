@@ -260,8 +260,8 @@ export function validateFinding(finding) {
     if (!isRelativePath(repo.file)) {
       errors.push('repo_evidence.file must be a relative repository path');
     }
-    if (typeof repo.symbol !== 'string' || repo.symbol.trim() === '') {
-      errors.push('repo_evidence.symbol is required');
+    if (typeof repo.symbol !== 'string' || repo.symbol.trim().length < 3) {
+      errors.push('repo_evidence.symbol must be at least 3 characters');
     }
   }
   if (finding.synthetic !== undefined && typeof finding.synthetic !== 'boolean') {
@@ -284,11 +284,11 @@ function validateScope(finding, scope) {
   if (!scope) return [];
   const errors = [];
   const routes = Array.isArray(scope.routes) ? scope.routes : [];
-  if (routes.length > 0 && !routes.includes(finding.route)) {
+  if (!routes.includes(finding.route)) {
     errors.push(`route ${JSON.stringify(finding.route)} was not audited`);
   }
   const audits = Array.isArray(scope.audits) ? scope.audits : [];
-  if (audits.length > 0 && !audits.includes(finding.audit)) {
+  if (!audits.includes(finding.audit)) {
     errors.push(`audit ${JSON.stringify(finding.audit)} is not in the digest`);
   }
   return errors;

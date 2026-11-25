@@ -138,6 +138,10 @@ test('validation rejects incomplete findings', () => {
     validateFinding(finding({ repo_evidence: { file: '../etc/passwd', symbol: 'x' } }))
       .some((error) => error.includes('relative')),
   );
+  assert.ok(
+    validateFinding(finding({ repo_evidence: { file: 'package.json', symbol: 'a' } }))
+      .some((error) => error.includes('at least 3 characters')),
+  );
 });
 
 test('the digest scope rejects invented audits and routes', () => {
@@ -159,6 +163,15 @@ test('the digest scope rejects invented audits and routes', () => {
   );
   assert.equal(inventedRoute.ok, false);
   assert.match(inventedRoute.reason, /was not audited/);
+
+  // A run with no failing audit allows nothing: an empty list is not a wildcard.
+  for (const empty of [
+    { routes: ['/'], audits: [] },
+    { routes: [], audits: ['uses-long-cache-ttl'] },
+  ]) {
+    const rejected = reviewFinding(finding(), { mode: 'real', scope: empty, ...deps });
+    assert.equal(rejected.ok, false);
+  }
 });
 
 test('a directory named as repository evidence rejects the finding instead of throwing', () => {

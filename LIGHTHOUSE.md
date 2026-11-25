@@ -28,9 +28,10 @@ A finding must satisfy all of these:
   and to a route that was actually audited. The workflow checks both against the digest
   (`audits.json`) and refuses findings that are not there. Manual, informative and
   not-applicable audits are excluded before the model is called.
-- **Fixable here.** `repo_evidence.file` is a real path in this repository and
-  `repo_evidence.symbol` really occurs in that file. The workflow checks both and refuses
-  findings that do not match.
+- **Fixable here.** `repo_evidence.file` is a real file in this repository and
+  `repo_evidence.symbol` (at least three characters) really occurs in that file. The workflow
+  checks both and refuses findings that do not match; the check proves the evidence exists,
+  not that the proposed fix is the right one.
 - **Concrete.** The fix names the change (a header, a component, an asset, a query), not
   "optimise performance".
 - **Consequential.** The impact is user-visible or operational. A warning that only repeats

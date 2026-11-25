@@ -831,6 +831,16 @@ test('the lighthouse workflow separates read-only preview from write-scoped crea
   );
 });
 
+test('every lighthouse checkout that reads model paths drops tracked symlinks', () => {
+  const workflow = read('.github/workflows/lighthouse.yml');
+  assert.equal(
+    (workflow.match(/- name: Drop tracked symlinks/g) ?? []).length,
+    3,
+    'the analysis and both publishing jobs must harden their checkout',
+  );
+  assert.equal((workflow.match(/git ls-files -s -z/g) ?? []).length, 3);
+});
+
 test('the lighthouse analysis hashes its inputs before the model runs', () => {
   const workflow = read('.github/workflows/lighthouse.yml');
   const verify = workflow.indexOf('lighthouse-digest.mjs verify');
