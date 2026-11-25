@@ -1,0 +1,283 @@
+name: lighthouse
+
+# Daily Lighthouse audit of the deployed application (`13 10 * * *` UTC).
+# `audit` is read-only: it warms the app, records and verifies the report bytes,
+# builds the digest, lets OpenCode analyse it and uploads one artifact.
+# `publish` is the only job with a write token: it validates the findings
+# against the digest, deduplicates and creates at most three issues.
+# `test_mode` is a manual-only demonstration of the same path.
+on:
+  schedule:
+    - cron: "13 10 * * *"
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: "Inject a synthetic finding to demonstrate issue creation"
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: lighthouse-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      APP_URL: ${{ vars.APP_URL }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      TEST_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.test_mode == true && 'true' || 'false' }}
+      # This job cannot create issues; the provenance record must say so.
+      CREATE_ISSUES: "false"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The deployed build comes from main; the scripts that consume secrets
+          # must be the trusted default-branch versions, never a branch copy.
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Drop tracked symlinks
+        run: |
+          set -euo pipefail
+          # external_directory is path-string based: a tracked symlink in the
+          # worktree could otherwise point at a runner file outside it.
+          while IFS= read -r -d '' entry; do
+            case "$entry" in
+              120000\ *)
+                link="${entry#*$'\t'}"
+                rm -f -- "$link"
+                ;;
+            esac
+          done < <(git ls-files -s -z)
+
+      - name: Check APP_URL and warm the deployment
+        run: |
+          set -euo pipefail
+          if [ -z "${APP_URL:-}" ]; then
+            echo "::error::the APP_URL repository variable is not set"
+            exit 1
+          fi
+          APP_URL="${APP_URL%/}"
+          case "$APP_URL" in
+            https://*) ;;
+            *)
+              echo "::error::APP_URL must be an https URL"
+              exit 1
+              ;;
+          esac
+          printf 'APP_URL=%s\n' "$APP_URL" >> "$GITHUB_ENV"
+          # The free Render plan sleeps after idle time: retry the cold start so
+          # it does not become a fake performance finding.
+          curl -fsS --location --max-time 30 --retry 5 --retry-delay 5 \
+            --retry-max-time 300 --output /dev/null "$APP_URL/health"
+          curl -fsS --location --max-time 60 --output /dev/null "$APP_URL/"
+
+      - name: Run Lighthouse
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          npx --yes lighthouse@12.8.2 "$APP_URL/" \
+            --output=json \
+            --output=html \
+            --output-path=reports/landing \
+            --only-categories=performance,accessibility,best-practices,seo \
+            --chrome-flags="--headless=new --no-sandbox --disable-dev-shm-usage" \
+            --max-wait-for-load=90000 \
+            --quiet
+          test -s reports/landing.report.json
+          test -s reports/landing.report.html
+
+      # The report hashes are the contract with the model: the digest is built
+      # from bytes that were verified before and after writing it.
+      - name: Validate, hash and build the digest
+        run: |
+          set -euo pipefail
+          node scripts/lighthouse-digest.mjs check \
+            --report reports/landing.report.json \
+            --app-url "$APP_URL"
+          node scripts/lighthouse-digest.mjs record \
+            --reports reports \
+            --meta reports/meta.json \
+            --app-url "$APP_URL" \
+            --event-name "$GITHUB_EVENT_NAME" \
+            --run-url "$RUN_URL"
+          args=(build --reports reports --meta reports/meta.json --out context.md --audits audits.json)
+          args+=(--app-url "$APP_URL" --run-url "$RUN_URL" --event-name "$GITHUB_EVENT_NAME")
+          if [ "$TEST_MODE" = "true" ]; then
+            args+=(--test-mode)
+          fi
+          node scripts/lighthouse-digest.mjs "${args[@]}"
+
+      # LIGHTHOUSE.md is the agent's instruction set, so the prompt is not a
+      # second copy that can drift from the documented criteria.
+      - name: Write the analysis prompt
+        run: |
+          set -euo pipefail
+          {
+            cat LIGHTHOUSE.md
+            echo
+            if [ "$TEST_MODE" = "true" ]; then
+              echo 'This run has test_mode enabled: keep the synthetic finding from context.md in findings.'
+              echo
+            fi
+            echo 'Read context.md first. The repository is checked out at the deployed default branch. End the report with the single machine-readable block described above.'
+          } > prompt.md
+
+      - name: Check the model key
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OPENCODE_API_KEY:-}" ]; then
+            echo "::error::OPENCODE_API_KEY is missing; the agent cannot start."
+            exit 1
+          fi
+
+      - name: Install OpenCode 1.19.6
+        env:
+          VERSION: 1.19.6
+        run: |
+          set -euo pipefail
+          # VERSION makes the installer download the pinned OpenCode 1 release, not the
+          # latest OpenCode 2 binary.
+          curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path
+          "$HOME/.opencode/bin/opencode" --version | grep -Fx "1.19.6"
+          echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
+
+      - name: Run the analysis
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          MODEL: opencode/deepseek-v4.1-flash
+          VARIANT: low
+          OPENCODE_DISABLE_PROJECT_CONFIG: "1"
+          OPENCODE_DISABLE_AUTOUPDATE: "1"
+          OPENCODE_DISABLE_CLAUDE_CODE: "1"
+          OPENCODE_PURE: "1"
+          OPENCODE_CONFIG_CONTENT: '{"share":"disabled"}'
+          OPENCODE_PERMISSION: |
+            {
+              "*": "deny",
+              "read": { "*": "allow", "*.env": "deny", "*.env.*": "deny", "*.env.example": "allow" },
+              "glob": "allow",
+              "grep": "allow",
+              "list": "allow",
+              "bash": "deny",
+              "edit": "deny",
+              "task": "deny",
+              "webfetch": "deny",
+              "websearch": "deny",
+              "skill": "deny",
+              "lsp": "deny",
+              "todowrite": "deny",
+              "question": "deny",
+              "external_directory": "deny",
+              "doom_loop": "deny"
+            }
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.opencode/bin:$PATH"
+          # The model must not inherit a GitHub credential from the runner.
+          unset GITHUB_TOKEN GH_TOKEN || true
+
+          # The hashes are calculated immediately before the CLI is invoked and
+          # are a reproducible record of the CLI inputs, not proof of receipt.
+          args=(provenance --context context.md --prompt prompt.md --out provenance.json)
+          args+=(--meta reports/meta.json --event-name "$GITHUB_EVENT_NAME" --model "$MODEL" --variant "$VARIANT")
+          if [ "$TEST_MODE" = "true" ]; then
+            args+=(--test-mode)
+          fi
+          node scripts/lighthouse-digest.mjs "${args[@]}"
+
+          opencode run \
+            --model "$MODEL" \
+            --variant "$VARIANT" \
+            --format json \
+            --title "Lighthouse audit $(date -u +%Y-%m-%d)" \
+            "$(cat prompt.md)" < /dev/null > events.jsonl 2> opencode.log
+
+          jq -R -s -r '[split("\n")[] | fromjson? | select(.type == "text") | .part.text] | last // empty' \
+            events.jsonl > report.md
+          if [ -z "$(tr -d '[:space:]' < report.md)" ]; then
+            echo "::error::OpenCode produced no analysis report"
+            exit 1
+          fi
+          node scripts/lighthouse-findings.mjs extract --report report.md --out findings.json
+
+      - name: Upload the audit
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lighthouse-audit
+          path: |
+            reports/
+            context.md
+            audits.json
+            prompt.md
+            provenance.json
+            events.jsonl
+            opencode.log
+            report.md
+            findings.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  publish:
+    needs: audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    env:
+      APP_URL: ${{ vars.APP_URL }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      TEST_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.test_mode == true && 'true' || 'false' }}
+      CREATE_ISSUES: "true"
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Drop tracked symlinks
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' entry; do
+            case "$entry" in
+              120000\ *)
+                link="${entry#*$'\t'}"
+                rm -f -- "$link"
+                ;;
+            esac
+          done < <(git ls-files -s -z)
+
+      - name: Download the audit
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: lighthouse-audit
+          path: analysis
+
+      - name: Publish findings
+        run: |
+          set -euo pipefail
+          APP_URL="${APP_URL%/}"
+          node scripts/lighthouse-issues.mjs create \
+            --report analysis/report.md \
+            --audits analysis/audits.json \
+            --out decisions.md \
+            --issues issues.md \
+            --proposed proposed-issue.md \
+            --app-url "$APP_URL" \
+            --run-url "$RUN_URL"
+          cat decisions.md >> "$GITHUB_STEP_SUMMARY"

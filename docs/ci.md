@@ -8,6 +8,9 @@ edited. Releases are automated separately on push to `main` by
 the PR check pipeline. An advisory AI review (`review.yml`) also runs on eligible pull
 requests; it is not a CI gate and not a required check (see
 [Independent AI pull request review](#independent-ai-pull-request-review-reviewyml)).
+A scheduled Lighthouse audit (`lighthouse.yml`) reviews the deployed application daily and
+is independent of pushes and pull requests (see
+[Scheduled Lighthouse audit](#scheduled-lighthouse-audit-lighthouseyml)).
 
 ## What the pipeline does
 
@@ -340,6 +343,178 @@ Exercise those on a real same-repository PR:
 6. On a test branch, temporarily remove `REVIEW.md` or `AGENTS.md` from the base and confirm
    the review fails with an error before any model call.
 7. Check that the comment is not a required status check and does not block merging.
+
+## Scheduled Lighthouse audit (`lighthouse.yml`)
+
+`.github/workflows/lighthouse.yml` audits the deployed application once a day, asks OpenCode
+to find genuinely actionable problems and publishes a small number of deduplicated issues.
+It is not part of the PR gate and never runs on a push or a pull request.
+
+- **Triggers:** `schedule` (daily, `13 10 * * *`) and `workflow_dispatch`. A scheduled run
+  always uses `test_mode=false`; the manual run can enable the demonstration described below.
+  The workflow only exists on the default branch, so a schedule starts after the file is
+  merged into `main`.
+- **Target:** `vars.APP_URL`, the deployed application (currently
+  `https://cal-clone-gqib.onrender.com`). The variable is a repository variable, not a secret.
+  Only `/` is audited, mobile preset, `lighthouse@12.8.2` pinned in the workflow. The job fails
+  early when the variable is missing or is not an `https://` URL.
+- **Warm-up:** the free Render plan sleeps after idle time; the first request can take a
+  minute. The job retries `/health` for up to five minutes and requests `/` once before
+  Lighthouse starts, so a cold start does not become a fake performance finding.
+- **Validity gate:** before the model sees anything, the audit is rejected when it reports a
+  `runtimeError`, a 5xx request, a page that loaded almost nothing, a missing LCP metric or a
+  final URL outside `APP_URL`. A broken deployment must not produce invented issues.
+
+### Jobs and permissions
+
+The workflow declares `permissions: {}` and scopes every job:
+
+| Job | Permissions | What it does |
+| --- | --- | --- |
+| `audit` | `contents: read` | warms the app, runs Lighthouse, records and verifies the report hashes, builds the digest, writes the prompt, runs OpenCode and uploads one artifact; no GitHub token reaches the model |
+| `publish` | `contents: read`, `issues: write` | validates findings against the digest, deduplicates and creates at most three issues; the only job with a write token |
+
+Both jobs derive `TEST_MODE` from `github.event_name` and the manual input, so it can only be
+`true` for `workflow_dispatch`; the publishing path also rejects test mode when
+`GITHUB_EVENT_NAME` is anything else. `GITHUB_EVENT_NAME` and `GITHUB_REPOSITORY` come from the
+runner's default environment; the local `preview` command does not need either of them.
+
+Both jobs check out `github.event.repository.default_branch`: the audit targets the deployed
+build, and the scripts that consume the API key or a write token must be the trusted
+default-branch versions rather than a copy from the dispatched branch. Both checkouts also drop
+tracked symlinks before any model or `repo_evidence` path is used: `external_directory` is
+path-string based, so a symlink inside the worktree could otherwise point at a runner file
+outside it, the same hardening as `review.yml`.
+
+### Reports, hashes and the model input
+
+- Lighthouse writes `landing.report.json` and `landing.report.html` under `reports/`.
+- `record` writes `reports/meta.json` with the sha256 and size of every report.
+- `build` verifies those hashes before writing `context.md` and again afterwards: a digest that
+  modifies a report fails the job before the model is called. The same check runs in
+  `scripts/lighthouse-digest.test.mjs`.
+- `context.md` is a digest, not the raw report: category scores, core metrics, failing
+  machine-readable audits with their evidence and potential savings, and failing requests.
+  `manual`, `informative` and `notApplicable` audits never reach the model.
+- The prompt is written to `prompt.md` from `LIGHTHOUSE.md`, so the agent's criteria and the
+  prompt cannot drift. Immediately before the CLI call, `provenance.json` records the sha256 and
+  size of `context.md` and `prompt.md`, the event, the mode flags, the model, the variant and the
+  Lighthouse version. Both files stay in the audit artifact. The hashes are a reproducible
+  record of the CLI inputs — they are not proof that the provider received those bytes. The
+  response is recorded as raw `events.jsonl`, decoded to `report.md` and reduced to
+  `findings.json`.
+- `build` also writes `audits.json`, the machine-readable scope of the run (audited route
+  pathnames and failing audit ids, plus the injected fixture identity in test mode). It is
+  uploaded with the audit artifact and used by the publishing job to reject a finding the model
+  invented.
+
+### Publishing and deduplication
+
+- The fingerprint is derived from the route, the audit id and the scope (resource path with
+  content hashes normalised, DOM selector without positional pseudo-classes, or the audit id).
+  Scores, savings and dates are excluded. It is stored in a hidden marker
+  (`<!-- lighthouse-finding: … -->`) that is always the **first line** of the issue body.
+  Model-controlled and Lighthouse-derived text is escaped before it reaches the body, and the
+  marker JSON escapes `<`/`>` so an untrusted route or audit cannot inject a second comment.
+- Deduplication reads every issue with the `lighthouse` label, open and closed, and matches the
+  fingerprint only when the valid marker is on the first line. A closed issue still blocks a
+  new one. Issues written before this rule with a marker lower in the body no longer match by
+  fingerprint — deliberately, because parsing arbitrary body text lets forged markers suppress
+  or hijack findings; the title veto below can still catch them. Titles are only a secondary
+  veto (similarity ≥ 0.8) for issues created before fingerprints existed; a title never creates
+  a finding on its own.
+- The actionability gate refuses a finding unless `repo_evidence.file` is a real file in the
+  repository and `repo_evidence.symbol` (at least three characters) occurs in it. This filters
+  invented evidence; it does not prove the fix itself is correct, so findings stay advisory. It
+  also refuses an audit id or route that is absent from the digest: `build` writes
+  `audits.json` next to `context.md`, and `publish` validates every finding against it — an
+  empty digest allows nothing — so a fabricated audit cannot be filed even with real repository
+  evidence.
+- Labels for real findings: `lighthouse`, the category (`performance`, `accessibility`, `seo`,
+  `best-practices`) and `bug` (or `enhancement` for `low`). At most three real issues are
+  created per run.
+- `publish` reads the deduplication state and re-checks it again immediately before each
+  `gh issue create`. If an issue appeared after the first read, the finding is recorded as
+  `duplicate_before_create` and nothing is created. A failed audit skips publishing entirely
+  (fail closed), while the reports and the audit artifact are still uploaded.
+
+### Local preview
+
+`scripts/lighthouse-issues.mjs preview` is a self-contained dry run for a report and a digest
+scope. It does not need `GITHUB_EVENT_NAME` or `GITHUB_REPOSITORY`, never calls `gh`, and never
+creates or modifies an issue — it only writes `decisions.md`, `issues.md` and
+`proposed-issue.md`. `--audits` is required so the local run applies the same digest-scope
+validation as `publish`:
+
+```bash
+node scripts/lighthouse-issues.mjs preview \
+  --report report.md \
+  --audits audits.json \
+  --app-url https://cal-clone-gqib.onrender.com
+```
+
+The preview starts from an **empty** list of existing issues, so it cannot check for
+duplicates against issues that already exist in GitHub. A `create` decision in a preview only
+means "no duplicate in this report"; the `publish` job re-reads GitHub and re-checks before
+creating anything.
+
+### Test mode
+
+`workflow_dispatch` with `test_mode=true` demonstrates the whole pipeline without falsifying
+data:
+
+- The real Lighthouse audit still runs and its reports stay byte-identical; the synthetic
+  finding is injected into `context.md` from `scripts/lighthouse-test-fixture.mjs`.
+- The fixture goes through the same agent analysis, validation, deduplication and publishing
+  path. `build` adds the fixture identity to `audits.json` in test mode, and at publish time
+  the canonical fixture itself must pass
+  `reviewFinding(canonical, { mode: 'test', scope })`: digest scope, repository file and
+  symbol. A failed review records `not_actionable` and publishes nothing, so the bundled
+  fixture cannot bypass the gate. If the model drops it, the canonical fixture is still
+  published and `agent_included_test_finding: false` is recorded.
+- The issue is titled `[TEST] …`, carries only the `lighthouse-test` label and explains that it
+  is synthetic and not a Lighthouse result.
+- The fingerprint is frozen (`582f378dfa6c0628`), so a second test run finds the existing issue
+  and records a duplicate instead of creating another one.
+- Test mode never publishes real findings: they are analysed and listed as `suppressed` in
+  `decisions.md`.
+- The synthetic issue is a permanent deduplication record. Close it after the demonstration; it
+  is never reopened or deleted automatically. No comments are added to it, so a maintainer who
+  wants a fresh demonstration can delete it and re-run the workflow manually.
+
+The test-mode decision and outcome are written to `decisions.md` and to the Actions step
+summary. Scheduled runs cannot reach test mode: the `TEST_MODE` expression can only be `true`
+for `workflow_dispatch`, and the scripts throw when `GITHUB_EVENT_NAME` is not
+`workflow_dispatch`.
+
+### Prerequisites and artifacts
+
+One-time setup, done by the repository owner:
+
+```bash
+gh variable set APP_URL --body https://cal-clone-gqib.onrender.com
+gh label create lighthouse --color 0E8A16 --description "Finding from the scheduled Lighthouse audit"
+gh label create lighthouse-test --color FBCA04 --description "Synthetic Lighthouse test finding; safe to close or delete"
+gh label create performance --color 1D76DB
+gh label create seo --color 5319E7
+gh label create best-practices --color 0052CC
+```
+
+`accessibility`, `bug` and `enhancement` already exist. The workflow needs the
+`OPENCODE_API_KEY` secret that the other agent workflows use.
+
+| Artifact | Contents | Retention |
+| --- | --- | --- |
+| `lighthouse-audit` | `reports/` (`landing.report.json`, `landing.report.html`, `meta.json`), `context.md`, `audits.json`, `prompt.md`, `provenance.json`, `events.jsonl`, `opencode.log`, `report.md`, `findings.json` | 14 days |
+
+The `publish` job writes `decisions.md` to the Actions step summary; it does not upload a second
+artifact.
+
+Limitations: performance scores on the free Render plan are noisy (shared CPU, sleeping,
+Cloudflare edge), so the workflow reports them as a trend and does not fail on a score drop;
+issues are not attributed to a specific commit because the deployed image does not expose its
+SHA, and the deployed build can lag `main` by one auto-deploy cycle. The audit is advisory: a
+human still decides whether a finding is worth a ticket.
 
 ## Run the gates locally
 

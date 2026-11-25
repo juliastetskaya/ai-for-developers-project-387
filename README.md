@@ -128,6 +128,16 @@ rollback information.
 Details and manual verification steps are in
 [docs/ci.md](docs/ci.md#independent-ai-pull-request-review-reviewyml).
 
+## Lighthouse audit
+
+`.github/workflows/lighthouse.yml` audits the deployed app (`vars.APP_URL`) daily, hashes the
+Lighthouse reports, gives OpenCode a digest and publishes at most three deduplicated issues.
+A finding must name a failing audit from the digest and a real file plus symbol in the
+repository; a read-only analysis job runs before the write-scoped publishing job. A manual
+`workflow_dispatch` with `test_mode=true` exercises the whole path with a synthetic `[TEST]`
+issue. Criteria are in [LIGHTHOUSE.md](LIGHTHOUSE.md); setup, permissions and the cron are in
+[docs/ci.md](docs/ci.md#scheduled-lighthouse-audit-lighthouseyml).
+
 ## Documentation
 
 | Document | What it covers |
@@ -136,6 +146,7 @@ Details and manual verification steps are in
 | [docs/deploy.md](docs/deploy.md) | Render, port, migrations, free-plan limits |
 | [docs/ci.md](docs/ci.md) | pipeline, `check` and `docker` jobs, branch protection, AI review |
 | [REVIEW.md](REVIEW.md) | AI review criteria, severity levels and report format |
+| [LIGHTHOUSE.md](LIGHTHOUSE.md) | Lighthouse audit criteria and the finding contract |
 | [docs/releases.md](docs/releases.md) | release-please, tags and CHANGELOG |
 | [docs/versioning.md](docs/versioning.md) | a single version across all packages |
 | [GLOSSARY.md](GLOSSARY.md) | domain language: Meeting Type, Booking, Slot, Working Window |

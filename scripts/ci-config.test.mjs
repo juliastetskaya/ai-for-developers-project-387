@@ -706,3 +706,223 @@ test('the AI review contract and pull request template are documented', () => {
 
   assert.match(read('docs/ci.md'), /\.github\/workflows\/review\.yml/);
 });
+
+test('the lighthouse workflow exposes a manual-only test mode', () => {
+  const workflow = read('.github/workflows/lighthouse.yml');
+  assert.match(workflow, /^name:\s*lighthouse$/m);
+  assert.match(workflow, /^ {2}schedule:\n {4}- cron:/m);
+  assert.match(workflow, /^ {2}workflow_dispatch:/m);
+  assert.match(
+    workflow,
+    /test_mode:\n\s+description:.*\n\s+type: boolean\n\s+default: false/,
+    'test_mode must be a boolean that defaults to false',
+  );
+
+  const testMode =
+    /TEST_MODE: \$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.test_mode == true && 'true' \|\| 'false' \}\}/g;
+  assert.equal(
+    (workflow.match(testMode) ?? []).length,
+    2,
+    'both jobs derive the same test mode, which is impossible on a schedule',
+  );
+  assert.doesNotMatch(workflow, /Normalise run mode/, 'no mode-normalisation step');
+  assert.doesNotMatch(workflow, /create_issues|retention_days/);
+  assert.doesNotMatch(workflow, /skip_audit/, 'no additional modes are introduced');
+
+  assert.equal(
+    (workflow.match(/ref: \$\{\{ github\.event\.repository\.default_branch \}\}/g) ?? []).length,
+    2,
+    'both jobs run the trusted default-branch scripts, not a branch copy',
+  );
+});
+
+test('the lighthouse workflow keeps analysis read-only and publishing write-scoped', () => {
+  const workflow = read('.github/workflows/lighthouse.yml');
+  const audit = workflowJob(workflow, 'audit');
+  const publish = workflowJob(workflow, 'publish');
+
+  assert.match(audit, /permissions:\n\s+contents: read/);
+  assert.doesNotMatch(audit, /issues: write/);
+  assert.doesNotMatch(audit, /(GH_TOKEN|GITHUB_TOKEN): \$\{\{|github\.token/);
+
+  assert.match(publish, /needs: audit/);
+  assert.match(publish, /permissions:\n\s+contents: read\n\s+issues: write/);
+  assert.match(publish, /lighthouse-issues\.mjs create/);
+
+  assert.equal(
+    (workflow.match(/issues: write/g) ?? []).length,
+    1,
+    'only the publishing job may write issues',
+  );
+  assert.doesNotMatch(workflow, /contents: write/);
+  assert.doesNotMatch(workflow, /pull-requests: write/);
+  assert.doesNotMatch(workflow, /publish-preview/, 'the preview job is gone');
+
+  assert.match(workflow, /name: lighthouse-audit/);
+  assert.match(workflow, /retention-days: 14/);
+  assert.ok(
+    (workflow.match(/if: always\(\)/g) ?? []).length >= 1,
+    'the audit artifact must survive a failed model call',
+  );
+});
+
+test('every lighthouse checkout that reads model paths drops tracked symlinks', () => {
+  const workflow = read('.github/workflows/lighthouse.yml');
+  assert.equal(
+    (workflow.match(/- name: Drop tracked symlinks/g) ?? []).length,
+    2,
+    'both jobs must harden their checkout',
+  );
+  assert.equal((workflow.match(/git ls-files -s -z/g) ?? []).length, 2);
+});
+
+test('the lighthouse analysis hashes its inputs before the model runs', () => {
+  const workflow = read('.github/workflows/lighthouse.yml');
+  const record = workflow.indexOf('lighthouse-digest.mjs record');
+  const build = workflow.indexOf('lighthouse-digest.mjs "${args[@]}"');
+  const provenance = workflow.indexOf('args=(provenance');
+  const model = workflow.indexOf('opencode run');
+  assert.ok(record !== -1 && build !== -1 && provenance !== -1 && model !== -1);
+  assert.ok(record < model, 'the report hashes must be recorded before the model call');
+  assert.ok(build < model, 'the context must be built before the model call');
+  assert.ok(provenance < model, 'provenance must be hashed immediately before the call');
+  assert.match(workflow, /--context context\.md --prompt prompt\.md --out provenance\.json/);
+  assert.match(workflow, /--meta reports\/meta\.json/);
+  assert.match(workflow, /--audits audits\.json/, 'build writes the digest scope');
+  assert.match(workflow, /^ {12}audits\.json$/m, 'the scope is uploaded with the audit');
+  assert.equal(
+    (workflow.match(/--audits analysis\/audits\.json/g) ?? []).length,
+    1,
+    'publishing validates findings against the digest scope',
+  );
+
+  const modelStep = workflow.slice(
+    workflow.indexOf('- name: Run the analysis'),
+    workflow.indexOf('- name: Upload the audit'),
+  );
+  assert.doesNotMatch(
+    modelStep,
+    /(GH_TOKEN|GITHUB_TOKEN): \$\{\{|github\.token/,
+    'the model step must not receive the workflow token',
+  );
+  assert.match(modelStep, /unset GITHUB_TOKEN GH_TOKEN/);
+  assert.match(workflow, /OPENCODE_DISABLE_PROJECT_CONFIG: "1"/);
+  assert.match(workflow, /OPENCODE_DISABLE_CLAUDE_CODE: "1"/);
+  assert.match(workflow, /OPENCODE_PURE: "1"/);
+  assert.match(workflow, /"share":"disabled"/);
+  assert.match(workflow, /cat LIGHTHOUSE\.md/, 'the criteria file is the prompt');
+});
+
+test('the lighthouse installer pins OpenCode 1 instead of the latest release', () => {
+  const workflow = read('.github/workflows/lighthouse.yml');
+  const install = workflow.slice(
+    workflow.indexOf('- name: Install OpenCode'),
+    workflow.indexOf('- name: Run the analysis'),
+  );
+  assert.ok(install.length > 0, 'the install step must exist before the analysis');
+  assert.match(
+    install,
+    /VERSION: 1\.19\.6/,
+    'VERSION makes the installer fetch the pinned OpenCode 1 release',
+  );
+  assert.match(install, /\$HOME\/\.opencode\/bin\/opencode" --version \| grep -Fx "1\.19\.6"/);
+});
+
+test('the lighthouse model key is scoped to the steps that need it', () => {
+  const workflow = read('.github/workflows/lighthouse.yml');
+  const preflight = workflow.slice(
+    workflow.indexOf('- name: Check the model key'),
+    workflow.indexOf('- name: Install OpenCode'),
+  );
+  const install = workflow.slice(
+    workflow.indexOf('- name: Install OpenCode'),
+    workflow.indexOf('- name: Run the analysis'),
+  );
+  const analysis = workflow.slice(
+    workflow.indexOf('- name: Run the analysis'),
+    workflow.indexOf('- name: Upload the audit'),
+  );
+
+  assert.ok(preflight.length > 0, 'the preflight step must exist before the installer');
+  assert.match(
+    preflight,
+    /OPENCODE_API_KEY: \$\{\{ secrets\.OPENCODE_API_KEY \}\}/,
+    'the preflight step must receive the model key',
+  );
+  assert.match(
+    preflight,
+    /-z "\$\{OPENCODE_API_KEY:-\}"/,
+    'the preflight step must fail when the key is empty',
+  );
+
+  assert.doesNotMatch(
+    install,
+    /OPENCODE_API_KEY/,
+    'the installer must not receive the model key',
+  );
+
+  assert.match(
+    analysis,
+    /OPENCODE_API_KEY: \$\{\{ secrets\.OPENCODE_API_KEY \}\}/,
+    'the analysis step is where the model key is actually needed',
+  );
+});
+
+test('the lighthouse jobs record their own create_issues mode', () => {
+  const workflow = read('.github/workflows/lighthouse.yml');
+  assert.match(
+    workflowJob(workflow, 'audit'),
+    /CREATE_ISSUES: "false"/,
+    'the read-only audit job must not claim that it creates issues',
+  );
+  assert.match(workflowJob(workflow, 'publish'), /CREATE_ISSUES: "true"/);
+});
+
+test('the lighthouse schedule is pinned to the documented daily cron', () => {
+  const workflow = read('.github/workflows/lighthouse.yml');
+  const cron = workflow.match(/^ {2}schedule:\n {4}- cron: "([^"]+)"$/m);
+  assert.ok(cron, 'the workflow must declare a cron schedule');
+  assert.equal(cron[1], '13 10 * * *', 'the audit runs daily at 10:13 UTC');
+
+  const docs = read('docs/ci.md');
+  assert.ok(docs.includes(`\`${cron[1]}\``), 'docs/ci.md must show the same schedule');
+  assert.match(docs, /once a day|daily/i);
+  assert.match(read('LIGHTHOUSE.md'), /once a day|daily/i);
+  assert.match(read('AGENTS.md'), /daily Lighthouse audit/);
+});
+
+test('every lighthouse workflow action is pinned to a commit SHA', () => {
+  const workflow = read('.github/workflows/lighthouse.yml');
+  const uses = workflow.split('\n').filter((line) => /^\s*uses:/.test(line));
+  assert.ok(uses.length >= 4);
+  for (const line of uses) {
+    assert.match(
+      line,
+      /@[0-9a-f]{40}\s+#\s*v?\d+\.\d+\.\d+/,
+      `every action must be pinned to a full commit SHA with its release in a comment: ${line.trim()}`,
+    );
+  }
+});
+
+test('the lighthouse contract and setup are documented', () => {
+  const criteria = read('LIGHTHOUSE.md');
+  for (const heading of ['## What is a finding', '## What is not a finding', '## Report format', '## Test mode', '## Boundaries']) {
+    assert.ok(criteria.includes(heading), `LIGHTHOUSE.md must contain "${heading}"`);
+  }
+  assert.match(criteria, /<!-- lighthouse-findings -->/);
+  assert.match(criteria, /\[TEST\]/, 'the test-mode prefix must be documented');
+  assert.match(criteria, /lighthouse-test/);
+
+  const docs = read('docs/ci.md');
+  assert.match(docs, /\.github\/workflows\/lighthouse\.yml/);
+  assert.match(docs, /APP_URL/);
+  assert.match(docs, /gh label create lighthouse-test/);
+  assert.match(docs, /provenance/);
+  assert.match(docs, /not proof that the provider/, 'the provenance caveat must be documented');
+  assert.match(docs, /audits\.json/, 'the digest scope must be documented');
+  assert.match(read('README.md'), /lighthouse/i, 'the README must mention the audit workflow');
+  assert.ok(
+    read('README.md').includes('LIGHTHOUSE.md'),
+    'the README must link the audit criteria',
+  );
+});
