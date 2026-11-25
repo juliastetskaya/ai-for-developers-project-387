@@ -131,16 +131,21 @@ jobs:
             echo 'Read context.md first. The repository is checked out at the deployed default branch. End the report with the single machine-readable block described above.'
           } > prompt.md
 
-      - name: Install OpenCode 1.19.6
+      - name: Check the model key
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
-          VERSION: 1.19.6
         run: |
           set -euo pipefail
           if [ -z "${OPENCODE_API_KEY:-}" ]; then
             echo "::error::OPENCODE_API_KEY is missing; the agent cannot start."
             exit 1
           fi
+
+      - name: Install OpenCode 1.19.6
+        env:
+          VERSION: 1.19.6
+        run: |
+          set -euo pipefail
           # VERSION makes the installer download the pinned OpenCode 1 release, not the
           # latest OpenCode 2 binary.
           curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path

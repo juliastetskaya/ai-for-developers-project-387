@@ -828,6 +828,46 @@ test('the lighthouse installer pins OpenCode 1 instead of the latest release', (
   assert.match(install, /\$HOME\/\.opencode\/bin\/opencode" --version \| grep -Fx "1\.19\.6"/);
 });
 
+test('the lighthouse model key is scoped to the steps that need it', () => {
+  const workflow = read('.github/workflows/lighthouse.yml');
+  const preflight = workflow.slice(
+    workflow.indexOf('- name: Check the model key'),
+    workflow.indexOf('- name: Install OpenCode'),
+  );
+  const install = workflow.slice(
+    workflow.indexOf('- name: Install OpenCode'),
+    workflow.indexOf('- name: Run the analysis'),
+  );
+  const analysis = workflow.slice(
+    workflow.indexOf('- name: Run the analysis'),
+    workflow.indexOf('- name: Upload the audit'),
+  );
+
+  assert.ok(preflight.length > 0, 'the preflight step must exist before the installer');
+  assert.match(
+    preflight,
+    /OPENCODE_API_KEY: \$\{\{ secrets\.OPENCODE_API_KEY \}\}/,
+    'the preflight step must receive the model key',
+  );
+  assert.match(
+    preflight,
+    /-z "\$\{OPENCODE_API_KEY:-\}"/,
+    'the preflight step must fail when the key is empty',
+  );
+
+  assert.doesNotMatch(
+    install,
+    /OPENCODE_API_KEY/,
+    'the installer must not receive the model key',
+  );
+
+  assert.match(
+    analysis,
+    /OPENCODE_API_KEY: \$\{\{ secrets\.OPENCODE_API_KEY \}\}/,
+    'the analysis step is where the model key is actually needed',
+  );
+});
+
 test('the lighthouse jobs record their own create_issues mode', () => {
   const workflow = read('.github/workflows/lighthouse.yml');
   assert.match(
