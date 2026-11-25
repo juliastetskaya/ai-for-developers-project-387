@@ -32,6 +32,8 @@ jobs:
       APP_URL: ${{ vars.APP_URL }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       TEST_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.test_mode == true && 'true' || 'false' }}
+      # This job cannot create issues; the provenance record must say so.
+      CREATE_ISSUES: "false"
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -129,15 +131,18 @@ jobs:
             echo 'Read context.md first. The repository is checked out at the deployed default branch. End the report with the single machine-readable block described above.'
           } > prompt.md
 
-      - name: Install OpenCode
+      - name: Install OpenCode 1.19.6
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          VERSION: 1.19.6
         run: |
           set -euo pipefail
           if [ -z "${OPENCODE_API_KEY:-}" ]; then
             echo "::error::OPENCODE_API_KEY is missing; the agent cannot start."
             exit 1
           fi
+          # VERSION makes the installer download the pinned OpenCode 1 release, not the
+          # latest OpenCode 2 binary.
           curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path
           "$HOME/.opencode/bin/opencode" --version | grep -Fx "1.19.6"
           echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"

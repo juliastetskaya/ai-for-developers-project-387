@@ -813,6 +813,31 @@ test('the lighthouse analysis hashes its inputs before the model runs', () => {
   assert.match(workflow, /cat LIGHTHOUSE\.md/, 'the criteria file is the prompt');
 });
 
+test('the lighthouse installer pins OpenCode 1 instead of the latest release', () => {
+  const workflow = read('.github/workflows/lighthouse.yml');
+  const install = workflow.slice(
+    workflow.indexOf('- name: Install OpenCode'),
+    workflow.indexOf('- name: Run the analysis'),
+  );
+  assert.ok(install.length > 0, 'the install step must exist before the analysis');
+  assert.match(
+    install,
+    /VERSION: 1\.19\.6/,
+    'VERSION makes the installer fetch the pinned OpenCode 1 release',
+  );
+  assert.match(install, /\$HOME\/\.opencode\/bin\/opencode" --version \| grep -Fx "1\.19\.6"/);
+});
+
+test('the lighthouse jobs record their own create_issues mode', () => {
+  const workflow = read('.github/workflows/lighthouse.yml');
+  assert.match(
+    workflowJob(workflow, 'audit'),
+    /CREATE_ISSUES: "false"/,
+    'the read-only audit job must not claim that it creates issues',
+  );
+  assert.match(workflowJob(workflow, 'publish'), /CREATE_ISSUES: "true"/);
+});
+
 test('the lighthouse schedule is pinned to the documented daily cron', () => {
   const workflow = read('.github/workflows/lighthouse.yml');
   const cron = workflow.match(/^ {2}schedule:\n {4}- cron: "([^"]+)"$/m);

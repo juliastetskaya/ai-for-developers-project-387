@@ -88,9 +88,10 @@ test('repo_evidence of the fixture points at real code', () => {
 });
 
 test('the fixture passes the test-mode gate and fails the real-mode gate', () => {
-  const asTest = reviewFinding(TEST_FINDING_CANONICAL, { mode: 'test' });
+  const scope = { routes: ['/'], audits: ['uses-long-cache-ttl'] };
+  const asTest = reviewFinding(TEST_FINDING_CANONICAL, { mode: 'test', scope });
   assert.equal(asTest.ok, true, asTest.reason);
-  const asReal = reviewFinding(TEST_FINDING_CANONICAL, { mode: 'real' });
+  const asReal = reviewFinding(TEST_FINDING_CANONICAL, { mode: 'real', scope });
   assert.equal(asReal.ok, false);
   assert.match(asReal.reason, /synthetic/);
 
@@ -100,6 +101,6 @@ test('the fixture passes the test-mode gate and fails the real-mode gate', () =>
     synthetic: false,
     fingerprint: undefined,
   };
-  assert.equal(reviewFinding(real, { mode: 'real' }).ok, true);
-  assert.equal(reviewFinding(real, { mode: 'test' }).ok, false);
+  assert.equal(reviewFinding(real, { mode: 'real', scope }).ok, true);
+  assert.equal(reviewFinding(real, { mode: 'test', scope }).ok, false);
 });

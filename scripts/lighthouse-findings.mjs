@@ -281,7 +281,9 @@ function defaultFileContains(file, symbol) {
 }
 
 function validateScope(finding, scope) {
-  if (!scope) return [];
+  if (!scope || typeof scope !== 'object' || Array.isArray(scope)) {
+    return ['the audit scope is missing, so nothing can be verified'];
+  }
   const errors = [];
   const routes = Array.isArray(scope.routes) ? scope.routes : [];
   if (!routes.includes(finding.route)) {

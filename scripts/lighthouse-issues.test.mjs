@@ -24,6 +24,12 @@ const LINKS = {
   appUrl: 'https://app.test',
 };
 
+// Every real finding must also be inside the digest scope written by `build`.
+const SCOPE = {
+  routes: ['/'],
+  audits: ['uses-long-cache-ttl', 'color-contrast', 'meta-description', 'link-name'],
+};
+
 function realFinding(overrides = {}) {
   return {
     id: 'cache-hashed-assets',
@@ -90,6 +96,7 @@ test('a validated real finding becomes an issue with lighthouse labels', () => {
     existingReal: [],
     existingTest: [],
     links: LINKS,
+    scope: SCOPE,
     deps,
   });
 
@@ -112,6 +119,7 @@ test('an existing fingerprint blocks a second issue', () => {
     existingReal: [issue(7, finding)],
     existingTest: [],
     links: LINKS,
+    scope: SCOPE,
     deps,
   });
   assert.equal(plan.items[0].decision, 'duplicate');
@@ -134,6 +142,7 @@ test('a near-identical title is a veto, not a duplicate key', () => {
     ],
     existingTest: [],
     links: LINKS,
+    scope: SCOPE,
     deps,
   });
   assert.equal(plan.items[0].decision, 'possible_duplicate');
@@ -165,6 +174,7 @@ test('a fingerprinted issue never vetoes a different finding by title', () => {
     existingReal: [existing],
     existingTest: [],
     links: LINKS,
+    scope: SCOPE,
     deps,
   });
   assert.equal(plan.items[0].decision, 'create');
@@ -178,6 +188,7 @@ test('test mode publishes only the synthetic finding and suppresses real ones', 
     existingReal: [],
     existingTest: [],
     links: LINKS,
+    scope: SCOPE,
     deps,
   });
 
@@ -204,6 +215,7 @@ test('the synthetic issue is created even when the model drops it', () => {
     existingReal: [],
     existingTest: [],
     links: LINKS,
+    scope: SCOPE,
     deps,
   });
   const synthetic = plan.items.find((item) => item.kind === 'test');
@@ -219,6 +231,7 @@ test('the stable fingerprint prevents repeated test issues', () => {
     existingReal: [],
     existingTest: [issue(3, testFinding(), { kind: 'test' })],
     links: LINKS,
+    scope: SCOPE,
     deps,
   });
   const synthetic = plan.items.find((item) => item.kind === 'test');
@@ -235,6 +248,7 @@ test('test issues are invisible to the real deduplication and vice versa', () =>
     existingReal: [issue(5, testFinding(), { kind: 'test' })],
     existingTest: [],
     links: LINKS,
+    scope: SCOPE,
     deps,
   });
   assert.equal(plan.items[0].decision, 'create');
@@ -248,6 +262,7 @@ test('findings without repository evidence are never published', () => {
     existingReal: [],
     existingTest: [],
     links: LINKS,
+    scope: SCOPE,
     deps: { fileExists: () => false, fileContains: () => true },
   });
   assert.equal(plan.items[0].decision, 'not_actionable');
@@ -268,6 +283,7 @@ test('at most three real issues are created per run', () => {
     existingReal: [],
     existingTest: [],
     links: LINKS,
+    scope: SCOPE,
     deps,
   });
   assert.equal(plan.items.filter((item) => item.decision === 'create').length, 3);
@@ -282,6 +298,7 @@ test('nothing is written when create_issues is false', () => {
     existingReal: [],
     existingTest: [],
     links: LINKS,
+    scope: SCOPE,
     deps,
   });
   const proposed = renderProposed(plan);
@@ -310,6 +327,7 @@ test('creation re-checks deduplication and never creates a duplicate', () => {
     existingReal: [],
     existingTest: [],
     links: LINKS,
+    scope: SCOPE,
     deps,
   });
   assert.equal(plan.items[0].decision, 'create');
@@ -340,6 +358,7 @@ test('creation calls gh with the exact payload once', () => {
     existingReal: [],
     existingTest: [],
     links: LINKS,
+    scope: SCOPE,
     deps,
   });
   const { runGh, calls } = fakeGh({ issues: { lighthouse: [] } });
@@ -368,6 +387,7 @@ test('creation in test mode labels the synthetic issue lighthouse-test', () => {
     existingReal: [],
     existingTest: [],
     links: LINKS,
+    scope: SCOPE,
     deps,
   });
   const { runGh, calls } = fakeGh({ issues: { 'lighthouse-test': [] } });

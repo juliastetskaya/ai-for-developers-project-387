@@ -8,7 +8,7 @@ import {
 } from 'node:fs';
 import { basename, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { parseBooleanEnv } from './lighthouse-findings.mjs';
+import { assertTestModeAllowed, parseBooleanEnv } from './lighthouse-findings.mjs';
 import { testFinding } from './lighthouse-test-fixture.mjs';
 
 export const MAX_CONTEXT_BYTES = 200_000;
@@ -166,6 +166,19 @@ export function checkLhr(lhr, { appUrl }) {
 function truncate(value, limit) {
   const text = String(value ?? '');
   return text.length > limit ? `${text.slice(0, limit)}…` : text;
+}
+
+/**
+ * Cuts a string to a byte budget without splitting a UTF-8 character. The cap
+ * and its message are byte-based; `slice` would count UTF-16 code units.
+ */
+export function truncateBytes(value, limit) {
+  const text = String(value ?? '');
+  const bytes = Buffer.from(text, 'utf8');
+  if (bytes.length <= limit) return text;
+  let end = limit;
+  while (end > 0 && (bytes[end] & 0xc0) === 0x80) end -= 1;
+  return bytes.subarray(0, end).toString('utf8');
 }
 
 function savings(audit) {
@@ -367,9 +380,11 @@ export function buildContext({
     lines.push('');
   }
 
-  let context = `${lines.join('\n')}\n`;
+  const context = `${lines.join('\n')}\n`;
   if (Buffer.byteLength(context) > MAX_CONTEXT_BYTES) {
-    context = `${context.slice(0, MAX_CONTEXT_BYTES)}\n\n_Context truncated at ${MAX_CONTEXT_BYTES} bytes._\n`;
+    const note = `\n\n_Context truncated at ${MAX_CONTEXT_BYTES} bytes._\n`;
+    const budget = MAX_CONTEXT_BYTES - Buffer.byteLength(note);
+    return `${truncateBytes(context, budget)}${note}`;
   }
   return context;
 }
@@ -478,6 +493,14 @@ function main() {
   const mode = args.mode;
   if (!mode) fail('--mode is required: record, verify, check, build or provenance');
 
+  if (args.testMode) {
+    try {
+      assertTestModeAllowed({ testMode: true, eventName: args.eventName });
+    } catch (error) {
+      fail(error.message);
+    }
+  }
+
   if (mode === 'check') {
     if (!args.report || !args.appUrl) fail('check needs --report and --app-url');
     const lhr = JSON.parse(readFileSync(args.report, 'utf8'));
@@ -546,7 +569,7 @@ function main() {
       promptPath: args.prompt,
       eventName: args.eventName,
       testMode: args.testMode,
-      createIssues: parseBooleanEnv(process.env.CREATE_ISSUES ?? 'true', 'CREATE_ISSUES'),
+      createIssues: parseBooleanEnv(process.env.CREATE_ISSUES ?? 'false', 'CREATE_ISSUES'),
       model: args.model ?? 'unknown',
       variant: args.variant ?? 'unknown',
       lighthouseVersion: args.lighthouseVersion ?? meta?.lighthouse_version ?? null,

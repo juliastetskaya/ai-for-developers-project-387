@@ -172,12 +172,23 @@ test('the digest scope rejects invented audits and routes', () => {
     const rejected = reviewFinding(finding(), { mode: 'real', scope: empty, ...deps });
     assert.equal(rejected.ok, false);
   }
+
+  // A missing scope is not a wildcard either: without the digest nothing is verifiable.
+  for (const missing of [undefined, null, [], 'not-a-scope']) {
+    const rejected = reviewFinding(finding(), { mode: 'real', scope: missing, ...deps });
+    assert.equal(rejected.ok, false);
+    assert.match(rejected.reason, /scope is missing/);
+  }
 });
 
 test('a directory named as repository evidence rejects the finding instead of throwing', () => {
   const review = reviewFinding(
     finding({ repo_evidence: { file: 'scripts', symbol: 'configureStaticFrontend' } }),
-    { mode: 'real', fileExists: () => true },
+    {
+      mode: 'real',
+      scope: { routes: ['/'], audits: ['uses-long-cache-ttl'] },
+      fileExists: () => true,
+    },
   );
   assert.equal(review.ok, false);
   assert.match(review.reason, /is not in scripts/);

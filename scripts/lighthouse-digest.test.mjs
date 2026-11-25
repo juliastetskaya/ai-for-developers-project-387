@@ -12,6 +12,7 @@ import {
   hashFile,
   provenancePayload,
   recordReports,
+  truncateBytes,
   verifyReports,
 } from './lighthouse-digest.mjs';
 import { TEST_FINDING_FINGERPRINT } from './lighthouse-test-fixture.mjs';
@@ -256,6 +257,23 @@ test('validity gate rejects runtime errors, 5xx and missing metrics', () => {
   for (const problems of broken) {
     assert.ok(problems.length > 0);
   }
+});
+
+test('truncateBytes respects a byte budget without splitting a character', () => {
+  assert.equal(truncateBytes('abc', 10), 'abc');
+  assert.equal(truncateBytes('abcdef', 4), 'abcd');
+  assert.equal(truncateBytes('', 0), '');
+
+  // A 3-byte character straddles the budget: it is dropped whole.
+  assert.equal(truncateBytes(`${'a'.repeat(9)}€`, 10), 'a'.repeat(9));
+  // A 4-byte emoji straddles the budget: it is dropped whole too.
+  assert.equal(truncateBytes(`${'a'.repeat(9)}😀`, 11), 'a'.repeat(9));
+  // A 2-byte character cannot fit into a one-byte budget.
+  assert.equal(truncateBytes('é', 1), '');
+
+  const cut = truncateBytes('Пример контекста', 12);
+  assert.ok(Buffer.byteLength(cut) <= 12);
+  assert.equal(cut, 'Пример');
 });
 
 test('provenance pins the CLI inputs', (t) => {
