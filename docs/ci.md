@@ -402,6 +402,9 @@ default-branch versions rather than a copy from the dispatched branch.
   hashes are a reproducible record of the CLI inputs — they are not proof that the provider
   received those bytes. The response is recorded as raw `events.jsonl`, decoded to `report.md`
   and reduced to `findings.json`.
+- `build` also writes `audits.json`, the machine-readable scope of the run (audited route
+  pathnames and failing audit ids). It is uploaded with the analysis artifact and used by the
+  publishing jobs to reject a finding the model invented.
 
 ### Publishing and deduplication
 
@@ -415,7 +418,9 @@ default-branch versions rather than a copy from the dispatched branch.
   finding on its own.
 - The actionability gate refuses a finding unless `repo_evidence.file` exists in the repository
   and `repo_evidence.symbol` occurs in that file, so host and platform noise cannot become an
-  issue.
+  issue. It also refuses an audit id or route that is absent from the digest: `build` writes
+  `audits.json` next to `context.md`, and `publish-preview`/`publish-create` validate every
+  finding against it, so a fabricated audit cannot be filed even with real repository evidence.
 - Labels for real findings: `lighthouse`, the category (`performance`, `accessibility`, `seo`,
   `best-practices`) and `bug` (or `enhancement` for `low`). At most three real issues are
   created per run.

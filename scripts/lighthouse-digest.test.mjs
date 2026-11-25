@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import {
+  auditScope,
   buildContext,
   checkLhr,
   coreMetrics,
@@ -29,8 +30,8 @@ function lhr(overrides = {}) {
       performance: {
         score: 0.7,
         auditRefs: [
-          { id: 'uses-long-cache-ttl' },
-          { id: 'largest-contentful-paint' },
+          { id: 'uses-long-cache-ttl', weight: 10 },
+          { id: 'largest-contentful-paint', weight: 25 },
           { id: 'manual-audit' },
         ],
       },
@@ -138,7 +139,18 @@ test('only failing machine-readable audits reach the context', () => {
   );
   assert.equal(audits[0].savings, '400 KiB');
   assert.equal(audits[0].items.length, 2);
+  assert.equal(audits[0].weight, 10, 'the real category weight, not the category name');
   assert.ok(!audits.some((audit) => audit.id === 'manual-audit'));
+});
+
+test('the audit scope lists only audited routes and failing audits', () => {
+  assert.deepEqual(auditScope([lhr()]), {
+    routes: ['/'],
+    audits: ['largest-contentful-paint', 'uses-long-cache-ttl'],
+  });
+  assert.deepEqual(auditScope([lhr({ finalDisplayedUrl: `${APP_URL}/book` })]).routes, [
+    '/book',
+  ]);
 });
 
 test('category scores and core metrics are summarised', () => {
@@ -160,6 +172,7 @@ test('the real context contains scores, evidence and no synthetic section', (t) 
   });
   assert.match(context, /\| performance \| 70 \|/);
   assert.match(context, /uses-long-cache-ttl/);
+  assert.match(context, /weight: 10/);
   assert.match(context, /index-C519h91O\.js/);
   assert.doesNotMatch(context, /Synthetic test finding/);
   assert.doesNotMatch(context, /"synthetic": true/);

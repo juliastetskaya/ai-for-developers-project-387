@@ -140,6 +140,21 @@ test('a near-identical title is a veto, not a duplicate key', () => {
   assert.equal(plan.items[0].duplicate.number, 9);
 });
 
+test('a finding outside the digest scope is not actionable', () => {
+  const plan = planIssues({
+    report: reportWith([realFinding({ audit: 'made-up-audit' })]),
+    testMode: false,
+    createIssues: true,
+    existingReal: [],
+    existingTest: [],
+    links: LINKS,
+    scope: { routes: ['/'], audits: ['uses-long-cache-ttl'] },
+    deps,
+  });
+  assert.equal(plan.items[0].decision, 'not_actionable');
+  assert.match(plan.items[0].reason, /not in the digest/);
+});
+
 test('a fingerprinted issue never vetoes a different finding by title', () => {
   const existing = issue(12, realFinding({ route: '/book' }));
   existing.title = realFinding().title;

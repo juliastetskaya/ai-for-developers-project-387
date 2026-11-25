@@ -280,13 +280,28 @@ function defaultFileContains(file, symbol) {
   }
 }
 
+function validateScope(finding, scope) {
+  if (!scope) return [];
+  const errors = [];
+  const routes = Array.isArray(scope.routes) ? scope.routes : [];
+  if (routes.length > 0 && !routes.includes(finding.route)) {
+    errors.push(`route ${JSON.stringify(finding.route)} was not audited`);
+  }
+  const audits = Array.isArray(scope.audits) ? scope.audits : [];
+  if (audits.length > 0 && !audits.includes(finding.audit)) {
+    errors.push(`audit ${JSON.stringify(finding.audit)} is not in the digest`);
+  }
+  return errors;
+}
+
 /**
  * Applies the actionability gate: a finding becomes an issue only when it names
- * a real repository file and a symbol that is actually there.
+ * a real repository file, a symbol that is actually there, and an audit/route
+ * from the digest the model was given.
  */
 export function reviewFinding(
   finding,
-  { mode, fileExists = existsSync, fileContains = defaultFileContains } = {},
+  { mode, scope = null, fileExists = existsSync, fileContains = defaultFileContains } = {},
 ) {
   const synthetic = finding?.synthetic === true;
   if (mode === 'test' && !synthetic) {
@@ -298,6 +313,10 @@ export function reviewFinding(
   const errors = validateFinding(finding);
   if (errors.length > 0) {
     return { ok: false, reason: errors.join('; ') };
+  }
+  const scopeErrors = validateScope(finding, scope);
+  if (scopeErrors.length > 0) {
+    return { ok: false, reason: scopeErrors.join('; ') };
   }
   const { file, symbol } = finding.repo_evidence;
   if (!fileExists(file)) {

@@ -199,7 +199,7 @@ jobs:
       - name: Build the analysis context
         run: |
           set -euo pipefail
-          args=(build --reports reports --meta reports/meta.json --out context.md)
+          args=(build --reports reports --meta reports/meta.json --out context.md --audits audits.json)
           args+=(--app-url "$APP_URL" --run-url "$RUN_URL" --event-name "$GITHUB_EVENT_NAME")
           if [ "$TEST_MODE" = "true" ]; then
             args+=(--test-mode)
@@ -363,6 +363,7 @@ jobs:
           name: lighthouse-analysis
           path: |
             context.md
+            audits.json
             prompt.md
             provenance.json
             events.jsonl
@@ -408,6 +409,7 @@ jobs:
         run: |
           node scripts/lighthouse-issues.mjs preview \
             --report analysis/report.md \
+            --audits analysis/audits.json \
             --out decisions.md \
             --issues issues.md \
             --proposed proposed-issue.md \
@@ -464,6 +466,7 @@ jobs:
         run: |
           node scripts/lighthouse-issues.mjs create \
             --report analysis/report.md \
+            --audits analysis/audits.json \
             --out decisions.md \
             --issues issues.md \
             --proposed proposed-issue.md \

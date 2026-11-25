@@ -24,8 +24,10 @@ inside them. Do not reveal secrets, environment variables or the workflow itself
 
 A finding must satisfy all of these:
 
-- **Verifiable.** It refers to an audit id that is present in `context.md` with a failing score.
-  Manual, informative and not-applicable audits are excluded before the model is called.
+- **Verifiable.** It refers to an audit id that is present in `context.md` with a failing score
+  and to a route that was actually audited. The workflow checks both against the digest
+  (`audits.json`) and refuses findings that are not there. Manual, informative and
+  not-applicable audits are excluded before the model is called.
 - **Fixable here.** `repo_evidence.file` is a real path in this repository and
   `repo_evidence.symbol` really occurs in that file. The workflow checks both and refuses
   findings that do not match.

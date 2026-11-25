@@ -207,6 +207,7 @@ export function failingAudits(lhr) {
       failures.push({
         id: ref.id,
         category: categoryId,
+        weight: ref.weight ?? null,
         title: audit.title,
         score: audit.score,
         displayValue: audit.displayValue ?? null,
@@ -218,6 +219,31 @@ export function failingAudits(lhr) {
     }
   }
   return failures;
+}
+
+/** Path of the page Lighthouse actually audited. */
+export function auditedRoute(lhr) {
+  const value = lhr?.finalDisplayedUrl;
+  if (!value) return '/';
+  try {
+    return new URL(value).pathname || '/';
+  } catch {
+    return '/';
+  }
+}
+
+/**
+ * The verifiable scope of a run: the routes that were audited and the failing
+ * audit ids the digest lists. A finding outside it is model invention.
+ */
+export function auditScope(lhrs) {
+  const routes = new Set();
+  const audits = new Set();
+  for (const lhr of lhrs) {
+    routes.add(auditedRoute(lhr));
+    for (const failure of failingAudits(lhr)) audits.add(failure.id);
+  }
+  return { routes: [...routes].sort(), audits: [...audits].sort() };
 }
 
 export function categoryScores(lhr) {
@@ -317,7 +343,7 @@ export function buildContext({
       );
       lines.push('');
       lines.push(
-        `- Score: ${failure.score}; weight: ${failure.category}; displayed: ${failure.displayValue ?? 'n/a'}`,
+        `- Score: ${failure.score}; weight: ${failure.weight ?? 'n/a'}; displayed: ${failure.displayValue ?? 'n/a'}`,
       );
       if (failure.savings) lines.push(`- Potential savings: ${failure.savings}`);
       if (failure.errorMessage) lines.push(`- Error: ${failure.errorMessage}`);
@@ -399,6 +425,9 @@ function parseArgs(argv) {
         break;
       case '--out':
         args.out = rest[++index];
+        break;
+      case '--audits':
+        args.audits = rest[++index];
         break;
       case '--context':
         args.context = rest[++index];
@@ -497,6 +526,9 @@ function main() {
       contextFinding: args.testMode ? testFinding() : null,
     });
     writeFileSync(args.out, context);
+    if (args.audits) {
+      writeFileSync(args.audits, `${JSON.stringify(auditScope(lhrs), null, 2)}\n`);
+    }
     const after = verifyReports(meta, args.reports);
     if (!after.ok) {
       fail(`digest generation modified a report: ${after.mismatches.join('; ')}`);

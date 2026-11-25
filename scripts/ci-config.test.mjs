@@ -843,6 +843,13 @@ test('the lighthouse analysis hashes its inputs before the model runs', () => {
   assert.ok(provenance < model, 'provenance must be hashed immediately before the call');
   assert.match(workflow, /--context context\.md --prompt prompt\.md --out provenance\.json/);
   assert.match(workflow, /--meta reports\/meta\.json/);
+  assert.match(workflow, /--audits audits\.json/, 'build writes the digest scope');
+  assert.match(workflow, /^ {12}audits\.json$/m, 'the scope is uploaded with the analysis');
+  assert.equal(
+    (workflow.match(/--audits analysis\/audits\.json/g) ?? []).length,
+    2,
+    'both publishing jobs validate findings against the digest scope',
+  );
 
   const modelStep = workflow.slice(
     workflow.indexOf('- name: Run the analysis'),
@@ -901,4 +908,10 @@ test('the lighthouse contract and setup are documented', () => {
   assert.match(docs, /gh label create lighthouse-test/);
   assert.match(docs, /provenance/);
   assert.match(docs, /not proof that the provider/, 'the provenance caveat must be documented');
+  assert.match(docs, /audits\.json/, 'the digest scope must be documented');
+  assert.match(read('README.md'), /lighthouse/i, 'the README must mention the audit workflow');
+  assert.ok(
+    read('README.md').includes('LIGHTHOUSE.md'),
+    'the README must link the audit criteria',
+  );
 });

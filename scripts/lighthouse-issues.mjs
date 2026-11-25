@@ -182,6 +182,7 @@ export function planIssues({
   existingReal = [],
   existingTest = [],
   links,
+  scope = null,
   deps = {},
 }) {
   const { findings, error } = extractFindings(report);
@@ -192,7 +193,7 @@ export function planIssues({
   for (const finding of realFindings) {
     const fingerprint = findingFingerprint(finding);
     const candidate = { ...finding, fingerprint };
-    const review = reviewFinding(candidate, { mode: 'real', ...deps });
+    const review = reviewFinding(candidate, { mode: 'real', scope, ...deps });
     if (!review.ok) {
       pushItem(items, {
         kind: 'real',
@@ -523,6 +524,9 @@ function parseArgs(argv) {
       case '--proposed':
         args.proposed = argv[++index];
         break;
+      case '--audits':
+        args.audits = argv[++index];
+        break;
       case '--app-url':
         args.appUrl = argv[++index];
         break;
@@ -578,6 +582,14 @@ function main() {
   } catch (error) {
     fail(`cannot read the analysis report ${args.report}: ${error.message}`);
   }
+  let scope = null;
+  if (args.audits) {
+    try {
+      scope = JSON.parse(readFileSync(args.audits, 'utf8'));
+    } catch (error) {
+      fail(`cannot read the audit scope ${args.audits}: ${error.message}`);
+    }
+  }
   const links = { runUrl: args.runUrl, appUrl: args.appUrl };
   const existingReal = collectIssues({ runGh: defaultRunGh, repo, label: LIGHTHOUSE_LABEL });
   const existingTest = testMode
@@ -591,6 +603,7 @@ function main() {
     existingReal,
     existingTest,
     links,
+    scope,
   });
   plan.eventName = eventName;
 

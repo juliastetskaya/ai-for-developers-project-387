@@ -140,6 +140,27 @@ test('validation rejects incomplete findings', () => {
   );
 });
 
+test('the digest scope rejects invented audits and routes', () => {
+  const scope = { routes: ['/'], audits: ['uses-long-cache-ttl'] };
+  const deps = { fileExists: () => true, fileContains: () => true };
+  assert.equal(
+    reviewFinding(finding(), { mode: 'real', scope, ...deps }).ok,
+    true,
+  );
+  const inventedAudit = reviewFinding(
+    finding({ audit: 'made-up-audit' }),
+    { mode: 'real', scope, ...deps },
+  );
+  assert.equal(inventedAudit.ok, false);
+  assert.match(inventedAudit.reason, /not in the digest/);
+  const inventedRoute = reviewFinding(
+    finding({ route: '/book' }),
+    { mode: 'real', scope, ...deps },
+  );
+  assert.equal(inventedRoute.ok, false);
+  assert.match(inventedRoute.reason, /was not audited/);
+});
+
 test('a directory named as repository evidence rejects the finding instead of throwing', () => {
   const review = reviewFinding(
     finding({ repo_evidence: { file: 'scripts', symbol: 'configureStaticFrontend' } }),
