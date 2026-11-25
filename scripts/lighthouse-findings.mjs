@@ -11,6 +11,8 @@ export const FINGERPRINT_VERSION = 'lh1';
 export const MAX_NEW_ISSUES = 3;
 export const MAX_TITLE_SIMILARITY = 0.8;
 
+const FINGERPRINT_PATTERN = /^[0-9a-f]{16}$/;
+
 export const CATEGORIES = [
   'performance',
   'accessibility',
@@ -135,26 +137,60 @@ export function markerPayload(finding) {
   };
 }
 
+/**
+ * Escapes HTML comment delimiters in untrusted text. The marker is parsed only
+ * from the first line, so this is defence in depth against model-controlled
+ * content that tries to forge a marker further down the body.
+ */
+export function escapeHtmlComments(value) {
+  return String(value ?? '')
+    .replace(/<!--/g, '&lt;!--')
+    .replace(/-->/g, '--&gt;');
+}
+
+function markerLine(name, finding) {
+  // `<` and `>` are escaped inside the JSON so a model-controlled route or
+  // audit can neither terminate the HTML comment nor inject another marker.
+  const payload = JSON.stringify(markerPayload(finding))
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e');
+  return `<!-- ${name}: ${payload} -->`;
+}
+
 export function buildMarker(finding) {
-  return `<!-- ${REAL_FINDING_MARKER}: ${JSON.stringify(markerPayload(finding))} -->`;
+  return markerLine(REAL_FINDING_MARKER, finding);
 }
 
 export function buildTestMarker(finding) {
-  return `<!-- ${TEST_FINDING_MARKER}: ${JSON.stringify(markerPayload(finding))} -->`;
+  return markerLine(TEST_FINDING_MARKER, finding);
 }
 
 function parseMarkerList(body, name) {
-  const pattern = new RegExp(`<!--\\s*${name}:\\s*([\\s\\S]*?)\\s*-->`, 'g');
-  const found = [];
-  for (const match of String(body ?? '').matchAll(pattern)) {
-    try {
-      const payload = JSON.parse(match[1]);
-      if (payload && typeof payload.fingerprint === 'string') found.push(payload);
-    } catch {
-      // A malformed marker is ignored: it cannot identify an existing issue.
+  // Only the first line can carry the workflow-managed marker. Parsing the
+  // whole body would let untrusted finding text forge a fingerprint and either
+  // suppress a real finding or hijack deduplication of another issue.
+  const [firstLine = ''] = String(body ?? '').split(/\r?\n/);
+  const pattern = new RegExp(
+    `^\\s*<!--\\s*${name}:\\s*(\\{[\\s\\S]*\\})\\s*-->\\s*$`,
+  );
+  const match = pattern.exec(firstLine);
+  if (!match) return [];
+  try {
+    const payload = JSON.parse(match[1]);
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return [];
+    if (
+      typeof payload.fingerprint !== 'string' ||
+      !FINGERPRINT_PATTERN.test(payload.fingerprint)
+    ) {
+      return [];
     }
+    if ('route' in payload && typeof payload.route !== 'string') return [];
+    if ('audit' in payload && typeof payload.audit !== 'string') return [];
+    return [payload];
+  } catch {
+    // A malformed marker is ignored: it cannot identify an existing issue.
+    return [];
   }
-  return found;
 }
 
 /** Parses both marker families, keeping real and synthetic issues apart. */

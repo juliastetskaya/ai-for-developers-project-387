@@ -15,7 +15,10 @@ import {
   truncateBytes,
   verifyReports,
 } from './lighthouse-digest.mjs';
-import { TEST_FINDING_FINGERPRINT } from './lighthouse-test-fixture.mjs';
+import {
+  TEST_FINDING_FINGERPRINT,
+  testFinding,
+} from './lighthouse-test-fixture.mjs';
 
 const APP_URL = 'https://app.test';
 const RUN_URL = 'https://github.com/owner/repo/actions/runs/1';
@@ -152,6 +155,24 @@ test('the audit scope lists only audited routes and failing audits', () => {
   assert.deepEqual(auditScope([lhr({ finalDisplayedUrl: `${APP_URL}/book` })]).routes, [
     '/book',
   ]);
+});
+
+test('test mode adds the synthetic fixture identity to the audit scope', () => {
+  // The fixture can still pass `reviewFinding` when the deployed report does
+  // not happen to fail the same audit: its identity was injected into the
+  // context, so it belongs to the digest scope of this run too.
+  const report = lhr({
+    categories: {
+      ...lhr().categories,
+      performance: {
+        score: 0.7,
+        auditRefs: [{ id: 'largest-contentful-paint', weight: 25 }],
+      },
+    },
+  });
+  const scope = auditScope([report], { include: [testFinding()] });
+  assert.deepEqual(scope.routes, ['/']);
+  assert.deepEqual(scope.audits, ['largest-contentful-paint', 'uses-long-cache-ttl']);
 });
 
 test('category scores and core metrics are summarised', () => {

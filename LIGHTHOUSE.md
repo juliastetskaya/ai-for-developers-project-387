@@ -56,7 +56,8 @@ A finding must satisfy all of these:
 The workflow computes a stable fingerprint from the route, the audit id and the scope
 (resource path with content hashes normalised, DOM selector without positional pseudo-classes,
 or the audit itself). Scores, savings and dates are not part of it. The fingerprint is stored
-in a hidden marker in the issue body and is the primary deduplication key.
+in a hidden marker on the first line of the issue body and is the primary deduplication key.
+Only that first-line marker is trusted; markers in finding text are escaped and ignored.
 
 Your titles are used only as a secondary veto for issues created before fingerprints existed.
 Do not try to guess whether an issue already exists: the workflow checks and decides.

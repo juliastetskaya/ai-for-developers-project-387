@@ -375,8 +375,9 @@ The workflow declares `permissions: {}` and scopes every job:
 | `publish` | `contents: read`, `issues: write` | validates findings against the digest, deduplicates and creates at most three issues; the only job with a write token |
 
 Both jobs derive `TEST_MODE` from `github.event_name` and the manual input, so it can only be
-`true` for `workflow_dispatch`; the scripts also throw when `GITHUB_EVENT_NAME` is anything
-else. `GITHUB_EVENT_NAME` and `GITHUB_REPOSITORY` come from the runner's default environment.
+`true` for `workflow_dispatch`; the publishing path also rejects test mode when
+`GITHUB_EVENT_NAME` is anything else. `GITHUB_EVENT_NAME` and `GITHUB_REPOSITORY` come from the
+runner's default environment; the local `preview` command does not need either of them.
 
 Both jobs check out `github.event.repository.default_branch`: the audit targets the deployed
 build, and the scripts that consume the API key or a write token must be the trusted
@@ -403,19 +404,25 @@ outside it, the same hardening as `review.yml`.
   response is recorded as raw `events.jsonl`, decoded to `report.md` and reduced to
   `findings.json`.
 - `build` also writes `audits.json`, the machine-readable scope of the run (audited route
-  pathnames and failing audit ids). It is uploaded with the audit artifact and used by the
-  publishing job to reject a finding the model invented.
+  pathnames and failing audit ids, plus the injected fixture identity in test mode). It is
+  uploaded with the audit artifact and used by the publishing job to reject a finding the model
+  invented.
 
 ### Publishing and deduplication
 
 - The fingerprint is derived from the route, the audit id and the scope (resource path with
   content hashes normalised, DOM selector without positional pseudo-classes, or the audit id).
-  Scores, savings and dates are excluded. It is stored in a hidden marker in the issue body
-  (`<!-- lighthouse-finding: … -->`).
+  Scores, savings and dates are excluded. It is stored in a hidden marker
+  (`<!-- lighthouse-finding: … -->`) that is always the **first line** of the issue body.
+  Model-controlled and Lighthouse-derived text is escaped before it reaches the body, and the
+  marker JSON escapes `<`/`>` so an untrusted route or audit cannot inject a second comment.
 - Deduplication reads every issue with the `lighthouse` label, open and closed, and matches the
-  fingerprint. A closed issue still blocks a new one. Titles are only a secondary veto
-  (similarity ≥ 0.8) for issues created before fingerprints existed; a title never creates a
-  finding on its own.
+  fingerprint only when the valid marker is on the first line. A closed issue still blocks a
+  new one. Issues written before this rule with a marker lower in the body no longer match by
+  fingerprint — deliberately, because parsing arbitrary body text lets forged markers suppress
+  or hijack findings; the title veto below can still catch them. Titles are only a secondary
+  veto (similarity ≥ 0.8) for issues created before fingerprints existed; a title never creates
+  a finding on its own.
 - The actionability gate refuses a finding unless `repo_evidence.file` is a real file in the
   repository and `repo_evidence.symbol` (at least three characters) occurs in it. This filters
   invented evidence; it does not prove the fix itself is correct, so findings stay advisory. It
@@ -431,6 +438,26 @@ outside it, the same hardening as `review.yml`.
   `duplicate_before_create` and nothing is created. A failed audit skips publishing entirely
   (fail closed), while the reports and the audit artifact are still uploaded.
 
+### Local preview
+
+`scripts/lighthouse-issues.mjs preview` is a self-contained dry run for a report and a digest
+scope. It does not need `GITHUB_EVENT_NAME` or `GITHUB_REPOSITORY`, never calls `gh`, and never
+creates or modifies an issue — it only writes `decisions.md`, `issues.md` and
+`proposed-issue.md`. `--audits` is required so the local run applies the same digest-scope
+validation as `publish`:
+
+```bash
+node scripts/lighthouse-issues.mjs preview \
+  --report report.md \
+  --audits audits.json \
+  --app-url https://cal-clone-gqib.onrender.com
+```
+
+The preview starts from an **empty** list of existing issues, so it cannot check for
+duplicates against issues that already exist in GitHub. A `create` decision in a preview only
+means "no duplicate in this report"; the `publish` job re-reads GitHub and re-checks before
+creating anything.
+
 ### Test mode
 
 `workflow_dispatch` with `test_mode=true` demonstrates the whole pipeline without falsifying
@@ -439,8 +466,12 @@ data:
 - The real Lighthouse audit still runs and its reports stay byte-identical; the synthetic
   finding is injected into `context.md` from `scripts/lighthouse-test-fixture.mjs`.
 - The fixture goes through the same agent analysis, validation, deduplication and publishing
-  path. If the model drops it, the canonical fixture is still published and
-  `agent_included_test_finding: false` is recorded.
+  path. `build` adds the fixture identity to `audits.json` in test mode, and at publish time
+  the canonical fixture itself must pass
+  `reviewFinding(canonical, { mode: 'test', scope })`: digest scope, repository file and
+  symbol. A failed review records `not_actionable` and publishes nothing, so the bundled
+  fixture cannot bypass the gate. If the model drops it, the canonical fixture is still
+  published and `agent_included_test_finding: false` is recorded.
 - The issue is titled `[TEST] …`, carries only the `lighthouse-test` label and explains that it
   is synthetic and not a Lighthouse result.
 - The fingerprint is frozen (`582f378dfa6c0628`), so a second test run finds the existing issue

@@ -248,13 +248,19 @@ export function auditedRoute(lhr) {
 /**
  * The verifiable scope of a run: the routes that were audited and the failing
  * audit ids the digest lists. A finding outside it is model invention.
+ * `include` carries the synthetic fixture in test mode, whose identity is part
+ * of the digest but never comes from a report.
  */
-export function auditScope(lhrs) {
+export function auditScope(lhrs, { include = [] } = {}) {
   const routes = new Set();
   const audits = new Set();
   for (const lhr of lhrs) {
     routes.add(auditedRoute(lhr));
     for (const failure of failingAudits(lhr)) audits.add(failure.id);
+  }
+  for (const finding of include) {
+    if (typeof finding?.route === 'string') routes.add(finding.route);
+    if (typeof finding?.audit === 'string') audits.add(finding.audit);
   }
   return { routes: [...routes].sort(), audits: [...audits].sort() };
 }
@@ -540,17 +546,21 @@ function main() {
     }
     const slugs = [...new Set((meta.reports ?? []).map((report) => report.slug))];
     const lhrs = slugs.map((slug) => readLhr(args.reports, slug));
+    const contextFinding = args.testMode ? testFinding() : null;
     const context = buildContext({
       meta,
       lhrs,
       eventName: args.eventName,
       runUrl: args.runUrl,
       testMode: args.testMode,
-      contextFinding: args.testMode ? testFinding() : null,
+      contextFinding,
     });
     writeFileSync(args.out, context);
     if (args.audits) {
-      writeFileSync(args.audits, `${JSON.stringify(auditScope(lhrs), null, 2)}\n`);
+      const scope = auditScope(lhrs, {
+        include: contextFinding ? [contextFinding] : [],
+      });
+      writeFileSync(args.audits, `${JSON.stringify(scope, null, 2)}\n`);
     }
     const after = verifyReports(meta, args.reports);
     if (!after.ok) {

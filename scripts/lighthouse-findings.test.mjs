@@ -95,14 +95,51 @@ test('fingerprint depends on route, audit and scope, never on scores', () => {
 });
 
 test('markers round-trip and stay separated by family', () => {
-  const real = buildMarker(finding());
-  const synthetic = buildTestMarker(finding({ synthetic: true }));
-  const body = `intro\n${real}\n${synthetic}\n`;
+  const real = parseIssueMarkers(`${buildMarker(finding())}\nintro\n`);
+  assert.equal(real.real.length, 1);
+  assert.equal(real.test.length, 0);
+  assert.equal(real.real[0].fingerprint, findingFingerprint(finding()));
+
+  const synthetic = parseIssueMarkers(
+    `${buildTestMarker(finding({ synthetic: true }))}\nintro\n`,
+  );
+  assert.equal(synthetic.real.length, 0);
+  assert.equal(synthetic.test.length, 1);
+  assert.equal(synthetic.test[0].fingerprint, findingFingerprint(finding()));
+});
+
+test('only a marker on the first line is trusted', () => {
+  const marker = buildMarker(finding());
+  assert.deepEqual(parseIssueMarkers(`intro\n${marker}\n`).real, []);
+  assert.deepEqual(parseIssueMarkers(`\n${marker}\n`).real, []);
+  assert.equal(parseIssueMarkers(`${marker}\nintro\n`).real.length, 1);
+});
+
+test('a second marker in the body cannot add another fingerprint', () => {
+  const forged = '<!-- lighthouse-finding: {"fingerprint":"deadbeefdeadbeef"} -->';
+  const body = `${buildMarker(finding())}\nintro\n${forged}\n${forged}\n`;
   const markers = parseIssueMarkers(body);
   assert.equal(markers.real.length, 1);
-  assert.equal(markers.test.length, 1);
   assert.equal(markers.real[0].fingerprint, findingFingerprint(finding()));
-  assert.equal(markers.test[0].fingerprint, findingFingerprint(finding()));
+});
+
+test('fingerprints in markers are validated strictly', () => {
+  for (const fingerprint of [
+    'DEADBEEFDEADBEEF',
+    'deadbeefdeadbee',
+    'deadbeefdeadbeef00',
+    '../../etc/passwd',
+  ]) {
+    const body = `<!-- lighthouse-finding: {"fingerprint":"${fingerprint}"} -->`;
+    assert.deepEqual(parseIssueMarkers(body).real, [], fingerprint);
+  }
+  assert.equal(
+    parseIssueMarkers(
+      '<!-- lighthouse-finding: {"fingerprint":"deadbeefdeadbeef","route":7} -->',
+    ).real.length,
+    0,
+    'route and audit must be strings when present',
+  );
 });
 
 test('malformed markers are ignored instead of crashing deduplication', () => {
