@@ -20,7 +20,7 @@ import {
 } from './lighthouse-findings.mjs';
 import { TEST_FINDING_FINGERPRINT, testFinding } from './lighthouse-test-fixture.mjs';
 
-const ARTIFACT_NOTE = 'lighthouse-reports';
+const ARTIFACT_NOTE = 'lighthouse-audit';
 
 function defaultRunGh(args) {
   try {
@@ -325,9 +325,9 @@ export function executePlan({ plan, runGh, repo, links, testMode }) {
     if (duplicate) {
       results.push({
         ...item,
-        decision: 'duplicate_after_preview',
+        decision: 'duplicate_before_create',
         duplicate,
-        reason: `issue #${duplicate.number} appeared between preview and creation`,
+        reason: `issue #${duplicate.number} appeared before creation`,
       });
       continue;
     }
@@ -342,7 +342,7 @@ export function executePlan({ plan, runGh, repo, links, testMode }) {
 export function renderIssues(plan) {
   const lines = ['# Lighthouse issues', ''];
   const created = plan.items.filter((item) => item.decision === 'created');
-  const late = plan.items.filter((item) => item.decision === 'duplicate_after_preview');
+  const late = plan.items.filter((item) => item.decision === 'duplicate_before_create');
   if (created.length === 0 && late.length === 0) {
     lines.push('No issue was created in this run.');
   }
@@ -396,7 +396,7 @@ export function renderDecisions(plan, { eventName, testMode, appUrl }) {
           : testItem?.decision === 'duplicate'
             ? `skipped duplicate of #${testItem.duplicate?.number}`
             : plan.createIssues
-              ? 'proposed in preview; publish-create re-checks and creates'
+              ? 'proposed; the create step re-checks and creates'
               : 'dry-run: proposed, not published'
       }`,
     );
@@ -439,7 +439,7 @@ export function renderProposed(plan) {
   const lines = ['# Proposed issues', ''];
   lines.push(
     plan.createIssues
-      ? 'This preview created nothing. `publish-create` re-checks deduplication before creating these payloads.'
+      ? 'Nothing was created yet: the create step re-checks deduplication before each `gh issue create`.'
       : 'Dry run: `create_issues=false`, so nothing is published. These payloads would have been submitted.',
   );
   lines.push('');

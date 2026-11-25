@@ -356,11 +356,10 @@ It is not part of the PR gate and never runs on a push or a pull request.
   merged into `main`.
 - **Target:** `vars.APP_URL`, the deployed application (currently
   `https://cal-clone-gqib.onrender.com`). The variable is a repository variable, not a secret.
-  Only `/` is audited, mobile preset, `lighthouse@12.8.2` (Lighthouse 13 needs Node 22.19+ and
-  `mise.toml` pins 22.16.0). The job fails early when the variable is missing or is not an
-  `https://` URL.
+  Only `/` is audited, mobile preset, `lighthouse@12.8.2` pinned in the workflow. The job fails
+  early when the variable is missing or is not an `https://` URL.
 - **Warm-up:** the free Render plan sleeps after idle time; the first request can take a
-  minute. The audit job polls `/health` for up to ten minutes and issues three requests before
+  minute. The job retries `/health` for up to five minutes and requests `/` once before
   Lighthouse starts, so a cold start does not become a fake performance finding.
 - **Validity gate:** before the model sees anything, the audit is rejected when it reports a
   `runtimeError`, a 5xx request, a page that loaded almost nothing, a missing LCP metric or a
@@ -372,42 +371,40 @@ The workflow declares `permissions: {}` and scopes every job:
 
 | Job | Permissions | What it does |
 | --- | --- | --- |
-| `audit` | `contents: read` | normalises the run mode once, warms the app, runs Lighthouse, records hashes, uploads the reports |
-| `analyse` | `contents: read` | verifies the report hashes, builds the digest, writes the prompt, hashes both inputs and runs OpenCode; no GitHub token reaches the model |
-| `publish-preview` | `contents: read`, `issues: read` | always runs, including dry runs: reads existing issues, classifies findings, writes `decisions.md`, `proposed-issue.md`; never writes to GitHub |
-| `publish-create` | `contents: read`, `issues: write` | runs only when the normalised `create_issues` output is `true`; re-checks deduplication immediately before each `gh issue create` |
+| `audit` | `contents: read` | warms the app, runs Lighthouse, records and verifies the report hashes, builds the digest, writes the prompt, runs OpenCode and uploads one artifact; no GitHub token reaches the model |
+| `publish` | `contents: read`, `issues: write` | validates findings against the digest, deduplicates and creates at most three issues; the only job with a write token |
 
-`test_mode` and `create_issues` are normalised in the first step of `audit` and exposed as job
-outputs (`needs.audit.outputs.*`). `$GITHUB_ENV` does not cross job boundaries, so no
-downstream job reads the raw event payload. `GITHUB_EVENT_NAME` is passed explicitly to every
-downstream job because the scripts enforce the dispatch-only test-mode guard themselves.
+Both jobs derive `TEST_MODE` from `github.event_name` and the manual input, so it can only be
+`true` for `workflow_dispatch`; the scripts also throw when `GITHUB_EVENT_NAME` is anything
+else. `GITHUB_EVENT_NAME` and `GITHUB_REPOSITORY` come from the runner's default environment.
 
-Every job checks out `github.event.repository.default_branch`: the audit targets the deployed
+Both jobs check out `github.event.repository.default_branch`: the audit targets the deployed
 build, and the scripts that consume the API key or a write token must be the trusted
-default-branch versions rather than a copy from the dispatched branch. The analysis and both
-publishing checkouts also drop tracked symlinks before any model or `repo_evidence` path is
-used: `external_directory` is path-string based, so a symlink inside the worktree could
-otherwise point at a runner file outside it, the same hardening as `review.yml`.
+default-branch versions rather than a copy from the dispatched branch. Both checkouts also drop
+tracked symlinks before any model or `repo_evidence` path is used: `external_directory` is
+path-string based, so a symlink inside the worktree could otherwise point at a runner file
+outside it, the same hardening as `review.yml`.
 
 ### Reports, hashes and the model input
 
 - Lighthouse writes `landing.report.json` and `landing.report.html` under `reports/`.
 - `record` writes `reports/meta.json` with the sha256 and size of every report.
-- `analyse` verifies those hashes before building the context, and `build` verifies them again
-  after writing `context.md`: a digest that modifies a report fails the job before the model is
-  called. The same check runs in `scripts/lighthouse-digest.test.mjs`.
+- `build` verifies those hashes before writing `context.md` and again afterwards: a digest that
+  modifies a report fails the job before the model is called. The same check runs in
+  `scripts/lighthouse-digest.test.mjs`.
 - `context.md` is a digest, not the raw report: category scores, core metrics, failing
   machine-readable audits with their evidence and potential savings, and failing requests.
   `manual`, `informative` and `notApplicable` audits never reach the model.
-- The prompt is written to `prompt.md`. Immediately before the CLI call, `provenance.json`
-  records the sha256 and size of `context.md` and `prompt.md`, the event, the mode flags, the
-  model, the variant and the Lighthouse version. Both files stay in the analysis artifact. The
-  hashes are a reproducible record of the CLI inputs — they are not proof that the provider
-  received those bytes. The response is recorded as raw `events.jsonl`, decoded to `report.md`
-  and reduced to `findings.json`.
+- The prompt is written to `prompt.md` from `LIGHTHOUSE.md`, so the agent's criteria and the
+  prompt cannot drift. Immediately before the CLI call, `provenance.json` records the sha256 and
+  size of `context.md` and `prompt.md`, the event, the mode flags, the model, the variant and the
+  Lighthouse version. Both files stay in the audit artifact. The hashes are a reproducible
+  record of the CLI inputs — they are not proof that the provider received those bytes. The
+  response is recorded as raw `events.jsonl`, decoded to `report.md` and reduced to
+  `findings.json`.
 - `build` also writes `audits.json`, the machine-readable scope of the run (audited route
-  pathnames and failing audit ids). It is uploaded with the analysis artifact and used by the
-  publishing jobs to reject a finding the model invented.
+  pathnames and failing audit ids). It is uploaded with the audit artifact and used by the
+  publishing job to reject a finding the model invented.
 
 ### Publishing and deduplication
 
@@ -423,16 +420,16 @@ otherwise point at a runner file outside it, the same hardening as `review.yml`.
   repository and `repo_evidence.symbol` (at least three characters) occurs in it. This filters
   invented evidence; it does not prove the fix itself is correct, so findings stay advisory. It
   also refuses an audit id or route that is absent from the digest: `build` writes
-  `audits.json` next to `context.md`, and `publish-preview`/`publish-create` validate every
-  finding against it — an empty digest allows nothing — so a fabricated audit cannot be filed
-  even with real repository evidence.
+  `audits.json` next to `context.md`, and `publish` validates every finding against it — an
+  empty digest allows nothing — so a fabricated audit cannot be filed even with real repository
+  evidence.
 - Labels for real findings: `lighthouse`, the category (`performance`, `accessibility`, `seo`,
   `best-practices`) and `bug` (or `enhancement` for `low`). At most three real issues are
   created per run.
-- `publish-create` repeats the deduplication read before each create call. If an issue appeared
-  after the preview, the finding is recorded as `duplicate_after_preview` and nothing is
-  created. A failed preview skips creation entirely (fail closed), while the reports and the
-  preview artifact are still uploaded.
+- `publish` reads the deduplication state and re-checks it again immediately before each
+  `gh issue create`. If an issue appeared after the first read, the finding is recorded as
+  `duplicate_before_create` and nothing is created. A failed audit skips publishing entirely
+  (fail closed), while the reports and the audit artifact are still uploaded.
 
 ### Test mode
 
@@ -450,16 +447,14 @@ data:
   and records a duplicate instead of creating another one.
 - Test mode never publishes real findings: they are analysed and listed as `suppressed` in
   `decisions.md`.
-- `create_issues=false` turns the run into a dry run: `proposed-issue.md` shows the exact title,
-  labels and body, and `decisions.md` records whether the issue would be created or skipped as a
-  duplicate.
 - The synthetic issue is a permanent deduplication record. Close it after the demonstration; it
   is never reopened or deleted automatically. No comments are added to it, so a maintainer who
   wants a fresh demonstration can delete it and re-run the workflow manually.
 
 The test-mode decision and outcome are written to `decisions.md` and to the Actions step
-summary. Scheduled runs cannot reach test mode: the normalisation step rejects it, and the
-scripts throw when `GITHUB_EVENT_NAME` is not `workflow_dispatch`.
+summary. Scheduled runs cannot reach test mode: the `TEST_MODE` expression can only be `true`
+for `workflow_dispatch`, and the scripts throw when `GITHUB_EVENT_NAME` is not
+`workflow_dispatch`.
 
 ### Prerequisites and artifacts
 
@@ -479,10 +474,10 @@ gh label create best-practices --color 0052CC
 
 | Artifact | Contents | Retention |
 | --- | --- | --- |
-| `lighthouse-reports` | `landing.report.json`, `landing.report.html`, `meta.json` | `retention_days`, default 30 |
-| `lighthouse-analysis` | `context.md`, `prompt.md`, `provenance.json`, `events.jsonl`, `opencode.log`, `report.md`, `findings.json` | `retention_days`, default 30 |
-| `lighthouse-preview` | `decisions.md`, `issues.md`, `proposed-issue.md` | fixed 15 days |
-| `lighthouse-issues` | the same files after creation, with issue links | fixed 15 days |
+| `lighthouse-audit` | `reports/` (`landing.report.json`, `landing.report.html`, `meta.json`), `context.md`, `audits.json`, `prompt.md`, `provenance.json`, `events.jsonl`, `opencode.log`, `report.md`, `findings.json` | 14 days |
+
+The `publish` job writes `decisions.md` to the Actions step summary; it does not upload a second
+artifact.
 
 Limitations: performance scores on the free Render plan are noisy (shared CPU, sleeping,
 Cloudflare edge), so the workflow reports them as a trend and does not fail on a score drop;

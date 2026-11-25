@@ -707,127 +707,62 @@ test('the AI review contract and pull request template are documented', () => {
   assert.match(read('docs/ci.md'), /\.github\/workflows\/review\.yml/);
 });
 
-test('the lighthouse workflow normalises test mode once and propagates it through job outputs', () => {
+test('the lighthouse workflow exposes a manual-only test mode', () => {
   const workflow = read('.github/workflows/lighthouse.yml');
   assert.match(workflow, /^name:\s*lighthouse$/m);
   assert.match(workflow, /^ {2}schedule:\n {4}- cron:/m);
   assert.match(workflow, /^ {2}workflow_dispatch:/m);
-  assert.match(workflow, /INPUT_TEST_MODE/);
   assert.match(
     workflow,
     /test_mode:\n\s+description:.*\n\s+type: boolean\n\s+default: false/,
     'test_mode must be a boolean that defaults to false',
   );
 
-  const auditJob = workflowJob(workflow, 'audit');
-  assert.match(
-    auditJob,
-    /outputs:\n\s+test_mode: \$\{\{ steps\.mode\.outputs\.test_mode \}\}\n\s+create_issues: \$\{\{ steps\.mode\.outputs\.create_issues \}\}/,
-    'the audit job must expose the normalised decision as job outputs',
-  );
-
-  const modeStep = auditJob.slice(
-    auditJob.indexOf('- name: Normalise run mode'),
-    auditJob.indexOf('- name: Checkout repository'),
-  );
-  assert.match(modeStep, /id: mode/);
-  assert.match(modeStep, /EVENT_NAME: \$\{\{ github\.event_name \}\}/);
-  assert.match(
-    modeStep,
-    /if \[ "\$EVENT_NAME" = "workflow_dispatch" \]/,
-    'the normalisation must gate on the explicit event name',
-  );
-  assert.match(modeStep, /::error::test_mode is only available for workflow_dispatch/);
-  assert.match(modeStep, /exit 1/);
-  assert.match(modeStep, />> "\$GITHUB_OUTPUT"/, 'outputs feed the other jobs');
-  assert.match(modeStep, />> "\$GITHUB_ENV"/, 'env feeds later steps of the same job');
+  const testMode =
+    /TEST_MODE: \$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.test_mode == true && 'true' \|\| 'false' \}\}/g;
   assert.equal(
-    (modeStep.match(/>> "\$GITHUB_OUTPUT"/g) ?? []).length,
-    (modeStep.match(/>> "\$GITHUB_ENV"/g) ?? []).length,
-    'every env value must also be a job output',
+    (workflow.match(testMode) ?? []).length,
+    2,
+    'both jobs derive the same test mode, which is impossible on a schedule',
   );
-
-  for (const job of ['analyse', 'publish-preview', 'publish-create']) {
-    const section = workflowJob(workflow, job);
-    assert.match(
-      section,
-      /TEST_MODE: \$\{\{ needs\.audit\.outputs\.test_mode \}\}/,
-      `${job} must read the normalised test mode`,
-    );
-    assert.match(
-      section,
-      /CREATE_ISSUES: \$\{\{ needs\.audit\.outputs\.create_issues \}\}/,
-      `${job} must read the normalised create flag`,
-    );
-    assert.match(
-      section,
-      /GITHUB_EVENT_NAME: \$\{\{ github\.event_name \}\}/,
-      `${job} must receive the event name explicitly`,
-    );
-    assert.doesNotMatch(section, /inputs\.test_mode/, `${job} must not read raw inputs`);
-    assert.match(
-      section,
-      /APP_URL: \$\{\{ needs\.audit\.outputs\.app_url \}\}/,
-      `${job} must use the normalised app URL`,
-    );
-  }
-
-  assert.match(auditJob, /APP_URL: \$\{\{ vars\.APP_URL \}\}/);
-  assert.match(
-    auditJob,
-    /app_url: \$\{\{ steps\.app\.outputs\.app_url \}\}/,
-    'the normalised app URL must be a job output',
-  );
-
+  assert.doesNotMatch(workflow, /Normalise run mode/, 'no mode-normalisation step');
+  assert.doesNotMatch(workflow, /create_issues|retention_days/);
   assert.doesNotMatch(workflow, /skip_audit/, 'no additional modes are introduced');
 
   assert.equal(
     (workflow.match(/ref: \$\{\{ github\.event\.repository\.default_branch \}\}/g) ?? []).length,
-    4,
-    'every job must run the trusted default-branch scripts, not a branch copy',
+    2,
+    'both jobs run the trusted default-branch scripts, not a branch copy',
   );
 });
 
-test('the lighthouse workflow separates read-only preview from write-scoped creation', () => {
+test('the lighthouse workflow keeps analysis read-only and publishing write-scoped', () => {
   const workflow = read('.github/workflows/lighthouse.yml');
-  const preview = workflowJob(workflow, 'publish-preview');
-  const create = workflowJob(workflow, 'publish-create');
+  const audit = workflowJob(workflow, 'audit');
+  const publish = workflowJob(workflow, 'publish');
 
-  assert.match(preview, /needs: \[audit, analyse\]/);
-  assert.match(preview, /permissions:\n\s+contents: read\n\s+issues: read/);
-  assert.doesNotMatch(preview, /issues: write/);
-  assert.match(preview, /lighthouse-issues\.mjs preview/);
+  assert.match(audit, /permissions:\n\s+contents: read/);
+  assert.doesNotMatch(audit, /issues: write/);
+  assert.doesNotMatch(audit, /(GH_TOKEN|GITHUB_TOKEN): \$\{\{|github\.token/);
 
-  assert.match(create, /needs: \[audit, analyse, publish-preview\]/);
-  assert.match(create, /if: needs\.audit\.outputs\.create_issues == 'true'/);
-  assert.match(create, /permissions:\n\s+contents: read\n\s+issues: write/);
-  assert.match(create, /lighthouse-issues\.mjs create/);
-  assert.doesNotMatch(
-    create,
-    /^ {4}if: always\(\)/m,
-    'the creation job itself must not run on failed upstream jobs',
-  );
+  assert.match(publish, /needs: audit/);
+  assert.match(publish, /permissions:\n\s+contents: read\n\s+issues: write/);
+  assert.match(publish, /lighthouse-issues\.mjs create/);
 
   assert.equal(
     (workflow.match(/issues: write/g) ?? []).length,
     1,
-    'only the creation job may write issues',
+    'only the publishing job may write issues',
   );
   assert.doesNotMatch(workflow, /contents: write/);
   assert.doesNotMatch(workflow, /pull-requests: write/);
+  assert.doesNotMatch(workflow, /publish-preview/, 'the preview job is gone');
 
-  assert.match(workflow, /name: lighthouse-reports/);
-  assert.match(workflow, /name: lighthouse-analysis/);
-  assert.match(workflow, /name: lighthouse-preview/);
-  assert.match(workflow, /name: lighthouse-issues/);
-  assert.equal(
-    (workflow.match(/retention-days: 15/g) ?? []).length,
-    2,
-    'decision artifacts keep a fixed 15-day retention',
-  );
+  assert.match(workflow, /name: lighthouse-audit/);
+  assert.match(workflow, /retention-days: 14/);
   assert.ok(
-    (workflow.match(/if: always\(\)/g) ?? []).length >= 4,
-    'reports and decisions must survive a failed audit or model call',
+    (workflow.match(/if: always\(\)/g) ?? []).length >= 1,
+    'the audit artifact must survive a failed model call',
   );
 });
 
@@ -835,35 +770,35 @@ test('every lighthouse checkout that reads model paths drops tracked symlinks', 
   const workflow = read('.github/workflows/lighthouse.yml');
   assert.equal(
     (workflow.match(/- name: Drop tracked symlinks/g) ?? []).length,
-    3,
-    'the analysis and both publishing jobs must harden their checkout',
+    2,
+    'both jobs must harden their checkout',
   );
-  assert.equal((workflow.match(/git ls-files -s -z/g) ?? []).length, 3);
+  assert.equal((workflow.match(/git ls-files -s -z/g) ?? []).length, 2);
 });
 
 test('the lighthouse analysis hashes its inputs before the model runs', () => {
   const workflow = read('.github/workflows/lighthouse.yml');
-  const verify = workflow.indexOf('lighthouse-digest.mjs verify');
+  const record = workflow.indexOf('lighthouse-digest.mjs record');
   const build = workflow.indexOf('lighthouse-digest.mjs "${args[@]}"');
   const provenance = workflow.indexOf('args=(provenance');
   const model = workflow.indexOf('opencode run');
-  assert.ok(verify !== -1 && build !== -1 && provenance !== -1 && model !== -1);
-  assert.ok(verify < model, 'report hashes must be verified before the model call');
+  assert.ok(record !== -1 && build !== -1 && provenance !== -1 && model !== -1);
+  assert.ok(record < model, 'the report hashes must be recorded before the model call');
   assert.ok(build < model, 'the context must be built before the model call');
   assert.ok(provenance < model, 'provenance must be hashed immediately before the call');
   assert.match(workflow, /--context context\.md --prompt prompt\.md --out provenance\.json/);
   assert.match(workflow, /--meta reports\/meta\.json/);
   assert.match(workflow, /--audits audits\.json/, 'build writes the digest scope');
-  assert.match(workflow, /^ {12}audits\.json$/m, 'the scope is uploaded with the analysis');
+  assert.match(workflow, /^ {12}audits\.json$/m, 'the scope is uploaded with the audit');
   assert.equal(
     (workflow.match(/--audits analysis\/audits\.json/g) ?? []).length,
-    2,
-    'both publishing jobs validate findings against the digest scope',
+    1,
+    'publishing validates findings against the digest scope',
   );
 
   const modelStep = workflow.slice(
     workflow.indexOf('- name: Run the analysis'),
-    workflow.indexOf('- name: Upload the analysis'),
+    workflow.indexOf('- name: Upload the audit'),
   );
   assert.doesNotMatch(
     modelStep,
@@ -875,6 +810,7 @@ test('the lighthouse analysis hashes its inputs before the model runs', () => {
   assert.match(workflow, /OPENCODE_DISABLE_CLAUDE_CODE: "1"/);
   assert.match(workflow, /OPENCODE_PURE: "1"/);
   assert.match(workflow, /"share":"disabled"/);
+  assert.match(workflow, /cat LIGHTHOUSE\.md/, 'the criteria file is the prompt');
 });
 
 test('the lighthouse schedule is pinned to the documented daily cron', () => {
@@ -893,7 +829,7 @@ test('the lighthouse schedule is pinned to the documented daily cron', () => {
 test('every lighthouse workflow action is pinned to a commit SHA', () => {
   const workflow = read('.github/workflows/lighthouse.yml');
   const uses = workflow.split('\n').filter((line) => /^\s*uses:/.test(line));
-  assert.ok(uses.length >= 6);
+  assert.ok(uses.length >= 4);
   for (const line of uses) {
     assert.match(
       line,

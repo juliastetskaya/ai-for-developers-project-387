@@ -133,7 +133,7 @@ Details and manual verification steps are in
 `.github/workflows/lighthouse.yml` audits the deployed app (`vars.APP_URL`) daily, hashes the
 Lighthouse reports, gives OpenCode a digest and publishes at most three deduplicated issues.
 A finding must name a failing audit from the digest and a real file plus symbol in the
-repository; a read-only preview always runs before the write-scoped creation job. A manual
+repository; a read-only analysis job runs before the write-scoped publishing job. A manual
 `workflow_dispatch` with `test_mode=true` exercises the whole path with a synthetic `[TEST]`
 issue. Criteria are in [LIGHTHOUSE.md](LIGHTHOUSE.md); setup, permissions and the cron are in
 [docs/ci.md](docs/ci.md#scheduled-lighthouse-audit-lighthouseyml).

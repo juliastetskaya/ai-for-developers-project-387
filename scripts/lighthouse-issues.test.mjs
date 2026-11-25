@@ -324,7 +324,7 @@ test('creation re-checks deduplication and never creates a duplicate', () => {
     testMode: false,
   });
 
-  assert.equal(executed.items[0].decision, 'duplicate_after_preview');
+  assert.equal(executed.items[0].decision, 'duplicate_before_create');
   assert.equal(executed.items[0].duplicate.number, 11);
   assert.equal(
     calls.filter((args) => args[0] === 'issue' && args[1] === 'create').length,
