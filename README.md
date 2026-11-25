@@ -9,7 +9,7 @@ A simplified cal.com clone: a single calendar owner publishes meeting types, and
 free slots without registration. A single-user app with no authentication; the owner's timezone
 is fixed (`Europe/Moscow`), while storage and the API work in UTC.
 
-Demo: **https://cal-clone-3v43.onrender.com** — `/book` for guests, `/admin` for the owner.
+Demo: **https://cal-clone-gqib.onrender.com** — `/book` for guests, `/admin` for the owner.
 Render's free plan keeps SQLite on an ephemeral filesystem: data resets on every deploy and
 restart (see [deployment](docs/deploy.md)).
 
