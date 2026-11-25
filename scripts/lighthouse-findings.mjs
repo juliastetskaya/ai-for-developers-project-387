@@ -26,7 +26,7 @@ const CATEGORY_LABELS = {
   'best-practices': 'best-practices',
 };
 
-const HASHED_FILENAME = /-[A-Za-z0-9_]{8,}(?=\.[A-Za-z0-9]+$)/;
+const HASHED_FILENAME = /-[A-Za-z0-9_-]{8,}(?=\.[A-Za-z0-9]+$)/;
 const POSITIONAL_PSEUDO =
   /:(?:nth-child|nth-of-type|nth-last-child|nth-last-of-type)\([^)]*\)/g;
 const FINDINGS_BLOCK =
@@ -271,8 +271,13 @@ export function validateFinding(finding) {
 }
 
 function defaultFileContains(file, symbol) {
-  if (!existsSync(file)) return false;
-  return readFileSync(file, 'utf8').includes(symbol);
+  // A missing path and a directory both throw here; either way the symbol is
+  // not evidence, so the finding is rejected instead of aborting the run.
+  try {
+    return readFileSync(file, 'utf8').includes(symbol);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -351,6 +356,9 @@ export function titleSimilarity(left, right) {
 export function findSoftDuplicate(title, existing, threshold = MAX_TITLE_SIMILARITY) {
   let best = null;
   for (const issue of existing ?? []) {
+    // Fingerprinted issues are deduplicated by their marker alone: a similar
+    // title must not suppress a different finding.
+    if (parseIssueMarkers(issue.body).real.length > 0) continue;
     const score = titleSimilarity(title, issue.title);
     if (score >= threshold && (!best || score > best.score)) {
       best = { issue, score };

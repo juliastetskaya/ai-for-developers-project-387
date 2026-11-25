@@ -1,6 +1,6 @@
 name: lighthouse
 
-# Weekly Lighthouse audit of the deployed application. The audit never blocks a
+# Daily Lighthouse audit of the deployed application (`13 10 * * *` UTC). It never blocks a
 # workflow and never touches code: it produces reports, asks OpenCode to find
 # genuinely actionable problems, and publishes at most a few deduplicated
 # issues. `test_mode` is a manual-only demonstration of the publishing pipeline.

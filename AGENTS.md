@@ -79,7 +79,7 @@ Do not bypass hooks (`--no-verify`) — CI re-runs the same checks.
   only; a missing base file fails the review before the model runs. It never approves,
   rejects, merges or edits a PR and is not a required check. Criteria and report format:
   [`REVIEW.md`](REVIEW.md); setup and manual checks: [`docs/ci.md`](docs/ci.md).
-- `.github/workflows/lighthouse.yml` — weekly Lighthouse audit of `vars.APP_URL` plus a
+- `.github/workflows/lighthouse.yml` — daily Lighthouse audit of `vars.APP_URL` plus a
   `workflow_dispatch` demonstration. The audit writes JSON/HTML reports, hashes them, passes a
   digest to OpenCode, and publishes deduplicated issues by a stable fingerprint
   (`lighthouse` label) — at most three per run. `test_mode` is manual-only: it injects the

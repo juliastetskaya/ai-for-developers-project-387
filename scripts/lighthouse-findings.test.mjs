@@ -13,6 +13,7 @@ import {
   parseBooleanEnv,
   parseIssueMarkers,
   realIssueLabels,
+  reviewFinding,
   testIssueLabels,
   titleSimilarity,
   validateFinding,
@@ -48,6 +49,17 @@ test('resource normalisation collapses content hashes and query strings', () => 
   );
   assert.equal(normaliseResource('/book'), '/book');
   assert.equal(normaliseResource(''), '/');
+});
+
+test('content hashes containing a hyphen are normalised too', () => {
+  assert.equal(
+    normaliseResource('/assets/index-AbC-dEf1Gh.js'),
+    '/assets/index-<hash>.js',
+  );
+  assert.equal(
+    normaliseResource('/assets/chunk-aB-cD_eF1Gh.css?v=2'),
+    '/assets/chunk-<hash>.css',
+  );
 });
 
 test('selector normalisation drops positional pseudo-classes and spacing', () => {
@@ -126,6 +138,15 @@ test('validation rejects incomplete findings', () => {
     validateFinding(finding({ repo_evidence: { file: '../etc/passwd', symbol: 'x' } }))
       .some((error) => error.includes('relative')),
   );
+});
+
+test('a directory named as repository evidence rejects the finding instead of throwing', () => {
+  const review = reviewFinding(
+    finding({ repo_evidence: { file: 'scripts', symbol: 'configureStaticFrontend' } }),
+    { mode: 'real', fileExists: () => true },
+  );
+  assert.equal(review.ok, false);
+  assert.match(review.reason, /is not in scripts/);
 });
 
 test('findings block extraction tolerates arrays and reports a missing block', () => {

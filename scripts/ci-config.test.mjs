@@ -860,6 +860,19 @@ test('the lighthouse analysis hashes its inputs before the model runs', () => {
   assert.match(workflow, /"share":"disabled"/);
 });
 
+test('the lighthouse schedule is pinned to the documented daily cron', () => {
+  const workflow = read('.github/workflows/lighthouse.yml');
+  const cron = workflow.match(/^ {2}schedule:\n {4}- cron: "([^"]+)"$/m);
+  assert.ok(cron, 'the workflow must declare a cron schedule');
+  assert.equal(cron[1], '13 10 * * *', 'the audit runs daily at 10:13 UTC');
+
+  const docs = read('docs/ci.md');
+  assert.ok(docs.includes(`\`${cron[1]}\``), 'docs/ci.md must show the same schedule');
+  assert.match(docs, /once a day|daily/i);
+  assert.match(read('LIGHTHOUSE.md'), /once a day|daily/i);
+  assert.match(read('AGENTS.md'), /daily Lighthouse audit/);
+});
+
 test('every lighthouse workflow action is pinned to a commit SHA', () => {
   const workflow = read('.github/workflows/lighthouse.yml');
   const uses = workflow.split('\n').filter((line) => /^\s*uses:/.test(line));

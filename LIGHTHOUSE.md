@@ -1,6 +1,6 @@
 # Lighthouse analysis criteria
 
-The scheduled `lighthouse` workflow audits the deployed application once a week, hands the
+The scheduled `lighthouse` workflow audits the deployed application once a day, hands the
 reports to the OpenCode agent and publishes GitHub issues for genuinely actionable problems.
 This file is the agent's instruction set. It describes what counts as a finding, what does
 not, and the exact output contract the workflow parses.

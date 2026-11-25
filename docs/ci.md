@@ -8,7 +8,7 @@ edited. Releases are automated separately on push to `main` by
 the PR check pipeline. An advisory AI review (`review.yml`) also runs on eligible pull
 requests; it is not a CI gate and not a required check (see
 [Independent AI pull request review](#independent-ai-pull-request-review-reviewyml)).
-A scheduled Lighthouse audit (`lighthouse.yml`) reviews the deployed application weekly and
+A scheduled Lighthouse audit (`lighthouse.yml`) reviews the deployed application daily and
 is independent of pushes and pull requests (see
 [Scheduled Lighthouse audit](#scheduled-lighthouse-audit-lighthouseyml)).
 
@@ -346,11 +346,11 @@ Exercise those on a real same-repository PR:
 
 ## Scheduled Lighthouse audit (`lighthouse.yml`)
 
-`.github/workflows/lighthouse.yml` audits the deployed application once a week, asks OpenCode
+`.github/workflows/lighthouse.yml` audits the deployed application once a day, asks OpenCode
 to find genuinely actionable problems and publishes a small number of deduplicated issues.
 It is not part of the PR gate and never runs on a push or a pull request.
 
-- **Triggers:** `schedule` (Mondays, `17 5 * * 1`) and `workflow_dispatch`. A scheduled run
+- **Triggers:** `schedule` (daily, `13 10 * * *`) and `workflow_dispatch`. A scheduled run
   always uses `test_mode=false`; the manual run can enable the demonstration described below.
   The workflow only exists on the default branch, so a schedule starts after the file is
   merged into `main`.

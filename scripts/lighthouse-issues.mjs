@@ -579,7 +579,8 @@ function main() {
     fail(`cannot read the analysis report ${args.report}: ${error.message}`);
   }
   const links = { runUrl: args.runUrl, appUrl: args.appUrl };
-  const existingReal = collectIssues({ runGh: defaultRunGh, repo, label: LIGHTHOUSE_LABEL });  const existingTest = testMode
+  const existingReal = collectIssues({ runGh: defaultRunGh, repo, label: LIGHTHOUSE_LABEL });
+  const existingTest = testMode
     ? collectIssues({ runGh: defaultRunGh, repo, label: LIGHTHOUSE_TEST_LABEL })
     : [];
 

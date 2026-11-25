@@ -140,6 +140,21 @@ test('a near-identical title is a veto, not a duplicate key', () => {
   assert.equal(plan.items[0].duplicate.number, 9);
 });
 
+test('a fingerprinted issue never vetoes a different finding by title', () => {
+  const existing = issue(12, realFinding({ route: '/book' }));
+  existing.title = realFinding().title;
+  const plan = planIssues({
+    report: reportWith([realFinding()]),
+    testMode: false,
+    createIssues: true,
+    existingReal: [existing],
+    existingTest: [],
+    links: LINKS,
+    deps,
+  });
+  assert.equal(plan.items[0].decision, 'create');
+});
+
 test('test mode publishes only the synthetic finding and suppresses real ones', () => {
   const plan = planIssues({
     report: reportWith([realFinding(), testFinding()]),
