@@ -351,8 +351,11 @@ jobs:
             --format json \
             --title "AI review: PR #$PR_NUMBER @ $HEAD_SHA" \
             "$PROMPT" < /dev/null > .review/events.jsonl 2> .review/opencode.log; then
-            echo "OpenCode failed; the last 100 log lines:" >&2
-            tail -n 100 .review/opencode.log >&2 || true
+            echo "OpenCode failed." >&2
+            for file in .review/events.jsonl .review/opencode.log; do
+              echo "--- $file ($(wc -c < "$file" 2> /dev/null || echo 0) bytes)" >&2
+              tail -n 50 "$file" >&2 || true
+            done
             exit 1
           fi
 
