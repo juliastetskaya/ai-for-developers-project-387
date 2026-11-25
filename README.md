@@ -138,6 +138,23 @@ repository; a read-only analysis job runs before the write-scoped publishing job
 issue. Criteria are in [LIGHTHOUSE.md](LIGHTHOUSE.md); setup, permissions and the cron are in
 [docs/ci.md](docs/ci.md#scheduled-lighthouse-audit-lighthouseyml).
 
+Example: the manual run
+[45613868880](https://github.com/juliastetskaya/ai-for-developers-project-387/actions/runs/45613868880)
+created issues [#25](https://github.com/juliastetskaya/ai-for-developers-project-387/issues/25),
+[#26](https://github.com/juliastetskaya/ai-for-developers-project-387/issues/26) and
+[#27](https://github.com/juliastetskaya/ai-for-developers-project-387/issues/27). A repeat run
+[45614416812](https://github.com/juliastetskaya/ai-for-developers-project-387/actions/runs/45614416812)
+found the same three findings and created no duplicates.
+
+Where the results are stored:
+
+- **GitHub issues:** issues carrying the `lighthouse` label, open or closed. Each body starts
+  with the fingerprint marker and links to the run that created it.
+- **Actions artifact:** `lighthouse-audit` in the run — `reports/` (Lighthouse JSON and HTML),
+  `context.md`, `audits.json`, `prompt.md`, `provenance.json`, `events.jsonl`, `opencode.log`,
+  `report.md` and `findings.json`; retained for 14 days.
+- **Job summary:** the `publish` job writes `decisions.md` to the Actions step summary.
+
 ## Documentation
 
 | Document | What it covers |
@@ -145,6 +162,7 @@ issue. Criteria are in [LIGHTHOUSE.md](LIGHTHOUSE.md); setup, permissions and th
 | [docs/architecture.md](docs/architecture.md) | layers, request flow, domain, data, testing |
 | [docs/deploy.md](docs/deploy.md) | Render, port, migrations, free-plan limits |
 | [docs/ci.md](docs/ci.md) | pipeline, `check` and `docker` jobs, branch protection, AI review |
+| [docs/github-agent.md](docs/github-agent.md) | conclusions from working with the GitHub agent: clarifications, trust boundaries, checks |
 | [REVIEW.md](REVIEW.md) | AI review criteria, severity levels and report format |
 | [LIGHTHOUSE.md](LIGHTHOUSE.md) | Lighthouse audit criteria and the finding contract |
 | [docs/releases.md](docs/releases.md) | release-please, tags and CHANGELOG |
