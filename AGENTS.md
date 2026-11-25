@@ -79,6 +79,15 @@ Do not bypass hooks (`--no-verify`) — CI re-runs the same checks.
   only; a missing base file fails the review before the model runs. It never approves,
   rejects, merges or edits a PR and is not a required check. Criteria and report format:
   [`REVIEW.md`](REVIEW.md); setup and manual checks: [`docs/ci.md`](docs/ci.md).
+- `.github/workflows/lighthouse.yml` — weekly Lighthouse audit of `vars.APP_URL` plus a
+  `workflow_dispatch` demonstration. The audit writes JSON/HTML reports, hashes them, passes a
+  digest to OpenCode, and publishes deduplicated issues by a stable fingerprint
+  (`lighthouse` label) — at most three per run. `test_mode` is manual-only: it injects the
+  frozen synthetic finding from `scripts/lighthouse-test-fixture.mjs` and publishes it as a
+  `[TEST]` issue with the `lighthouse-test` label; scheduled runs cannot enable it and test
+  findings never mix with real ones. Not part of the PR gate; criteria live in
+  [`LIGHTHOUSE.md`](LIGHTHOUSE.md), setup and test mode in
+  [`docs/ci.md`](docs/ci.md#scheduled-lighthouse-audit-lighthouseyml).
 - `main` is protected: the `check` status is required (strict, admins enforced). The pipeline, local gates and the branch-protection commands are documented in [`docs/ci.md`](docs/ci.md). If a new workflow/job name replaces `check`, update the required status context.
 
 ## Deployment

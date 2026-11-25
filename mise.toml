@@ -86,8 +86,8 @@ description = "Verify the release-please config matches the single version and w
 run = "pnpm test-release-please && pnpm check-release-please"
 
 [tasks."check:ci"]
-description = "Validate CI config, workflow files and the OpenCode attempt budget"
-run = "node --test scripts/ci-config.test.mjs scripts/opencode-budget.test.mjs && actionlint"
+description = "Validate CI config, workflow files, the OpenCode attempt budget and the Lighthouse audit scripts"
+run = "node --test scripts/ci-config.test.mjs scripts/opencode-budget.test.mjs scripts/lighthouse-findings.test.mjs scripts/lighthouse-fixture.test.mjs scripts/lighthouse-digest.test.mjs scripts/lighthouse-issues.test.mjs && actionlint"
 
 [tasks.check]
 description = "Run all checks: lint, typecheck, unit + e2e tests, browser scenarios, build, SDK freshness, version sync, release-please and CI config"
