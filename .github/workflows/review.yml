@@ -345,12 +345,16 @@ jobs:
           PROMPT
           )
 
-          opencode run \
+          if ! opencode run \
             --model opencode/deepseek-v4.1-flash \
             --variant low \
             --format json \
             --title "AI review: PR #$PR_NUMBER @ $HEAD_SHA" \
-            "$PROMPT" < /dev/null > .review/events.jsonl 2> .review/opencode.log
+            "$PROMPT" < /dev/null > .review/events.jsonl 2> .review/opencode.log; then
+            echo "OpenCode failed; the last 100 log lines:" >&2
+            tail -n 100 .review/opencode.log >&2 || true
+            exit 1
+          fi
 
           # --format json streams one JSON event per line. Take the last completed text part,
           # which is the model's final answer.
